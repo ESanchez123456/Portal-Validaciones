@@ -158,7 +158,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-09-07-7</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-09-11-9</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -301,9 +301,14 @@ tr:hover td{background:#f7faff}
     </div>
   <div class="toolbar" style="flex-wrap:wrap;gap:6px">
     <button class="btn bg" onclick="btnGuardarAvance()">💾 Guardar avance</button>
+    <button class="btn bk" onclick="btnSyncNow()" id="btn-sync-now">🔄 Sincronizar</button>
     <button class="btn bk" onclick="btnLimpiar('notif')">✕ Limpiar filtros</button>
     <button class="btn br" onclick="btnBorrar('notif')">🗑 Borrar base</button>
     <button id="btn-save-all" class="btn" style="display:none;background:#1BC5BD;color:#fff;font-weight:700" onclick="btnCerrarNotif()">🎉 Cerrar y archivar jornada</button>
+  </div>
+  <div id="gs-update-banner" style="display:none;margin-bottom:10px;padding:10px 14px;background:#FFF4DE;border:1px solid #FFA800;border-radius:8px;align-items:center;justify-content:space-between;gap:10px">
+    <span style="font-size:12px;color:#7a4a00;font-weight:600">🔄 Hay cambios nuevos de otro usuario (ej. Claudia) sin aplicar en tu pantalla.</span>
+    <button class="btn bg" style="font-size:11px;padding:5px 12px" onclick="applyGSUpdate()">Actualizar ahora</button>
   </div>
     <!-- Leyenda de distribución -->
     <div id="notif-leyenda" style="display:none;margin-bottom:10px">
@@ -1538,6 +1543,72 @@ function dlXLSXSlot(fecha,slotId,sec){sec=sec||'syp';
 }
 
 // ---- INDICADORES ----
+function buildTifChart(rows){
+  var wrap='<div style="margin-bottom:18px">'+
+    '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📈 Evolución de omisiones por tipificación</div>';
+  if(!rows.length){
+    return wrap+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin omisiones registradas todavía</div></div>';
+  }
+  // Group: date -> tif -> count
+  var dateMap={};
+  var tifSet=[];
+  rows.forEach(function(r){
+    var d=r.fc2||'—';
+    if(!dateMap[d])dateMap[d]={};
+    var t=r.tif||'—';
+    dateMap[d][t]=(dateMap[d][t]||0)+1;
+    if(tifSet.indexOf(t)<0)tifSet.push(t);
+  });
+  var dates=Object.keys(dateMap).sort(function(a,b){
+    // try dd/mm/yyyy parse, fallback to string compare
+    var pa=a.split('/'),pb=b.split('/');
+    if(pa.length===3&&pb.length===3){
+      var da=new Date(pa[2],pa[1]-1,pa[0]),db=new Date(pb[2],pb[1]-1,pb[0]);
+      return da-db;
+    }
+    return a.localeCompare(b);
+  });
+  var palette=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#166534','#1e40af'];
+  var colorOf={};
+  tifSet.forEach(function(t,i){colorOf[t]=palette[i%palette.length];});
+  var maxTotal=0;
+  dates.forEach(function(d){
+    var tot=0;Object.keys(dateMap[d]).forEach(function(t){tot+=dateMap[d][t];});
+    if(tot>maxTotal)maxTotal=tot;
+  });
+  var W=Math.max(560,dates.length*70+80),H=260,padL=40,padB=44,padT=14,padR=14;
+  var chartW=W-padL-padR,chartH=H-padT-padB;
+  var barW=Math.min(46,chartW/dates.length*0.6);
+  var step=chartW/dates.length;
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-height:300px" xmlns="http://www.w3.org/2000/svg">';
+  // Y gridlines (0,25%,50%,75%,100% of maxTotal)
+  var ySteps=4;
+  for(var s=0;s<=ySteps;s++){
+    var val=Math.round(maxTotal*s/ySteps);
+    var y=padT+chartH-(chartH*s/ySteps);
+    svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#eef1f5" stroke-width="1"/>';
+    svg+='<text x="'+(padL-8)+'" y="'+(y+3)+'" font-size="9" fill="#8a96a3" text-anchor="end">'+val+'</text>';
+  }
+  dates.forEach(function(d,i){
+    var x=padL+step*i+(step-barW)/2;
+    var yCursor=padT+chartH;
+    Object.keys(dateMap[d]).sort().forEach(function(t){
+      var v=dateMap[d][t];
+      var h=maxTotal?(v/maxTotal*chartH):0;
+      yCursor-=h;
+      svg+='<rect x="'+x+'" y="'+yCursor+'" width="'+barW+'" height="'+h+'" fill="'+colorOf[t]+'"><title>'+esc(t)+': '+v+'</title></rect>';
+    });
+    svg+='<text x="'+(x+barW/2)+'" y="'+(padT+chartH+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(d)+'</text>';
+  });
+  svg+='</svg>';
+  var legend='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #eef1f5">';
+  tifSet.forEach(function(t){
+    legend+='<span style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#464E5F">'+
+      '<span style="width:10px;height:10px;border-radius:2px;background:'+colorOf[t]+';display:inline-block"></span>'+esc(t)+'</span>';
+  });
+  legend+='</div>';
+  return wrap+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+svg+legend+'</div></div>';
+}
 function renderInd(){
   // Build records by section — activos + histórico cerrado (sin duplicar)
   function buildAllSec(sec){
@@ -2026,13 +2097,13 @@ function renderInd(){
     });
     notifH+='</tbody></table></div></div>';
 
-    // ── Detalle: cada resolución con Tipificación, Subtipificación, Obs. y revisor ──
-    var detRows=notifAll2.slice().sort(function(a,b){
+    // ── Detalle: solo las OMISIONES (resoluciones con tipificación registrada) ──
+    var detRows=notifAll2.filter(function(r){return !!r.tif;}).sort(function(a,b){
       return (a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
     });
     var v50Badge={'Jose Gutierrez':{bg:'#fef9c3',fg:'#744210'},'Jemima Gonzales':{bg:'#ede9fe',fg:'#553c9a'},'Nestor Rossell':{bg:'#fefce8',fg:'#713f12'}};
     notifH+='<div style="margin-bottom:18px">'+
-      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📋 Detalle por resolución ('+detRows.length+')</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📋 Detalle de omisiones ('+detRows.length+')</div>'+
       '<div style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px">'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead style="position:sticky;top:0;z-index:1"><tr style="background:#042433;color:#fff;text-align:left">'+
@@ -2055,8 +2126,11 @@ function renderInd(){
         '<td style="padding:5px 9px">'+revBadge+'</td>'+
       '</tr>';
     });
-    if(!detRows.length)notifH+='<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--muted)">Sin registros</td></tr>';
+    if(!detRows.length)notifH+='<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
     notifH+='</tbody></table></div></div>';
+
+    // ── Gráfico: evolución de omisiones por Tipificación, día a día ──
+    notifH+=buildTifChart(detRows);
   }
 
 
@@ -2897,10 +2971,13 @@ function chValOkSingle(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   r.val_ok=cb.checked;
   if(!r.frev)r.frev=todayStr();
+  // Sync estado con la validación: esto es lo que alimenta las tarjetas de arriba (Total/Pendientes/Revisados/% Avance)
+  r.est=r.val_ok?'Revisado':'Pendiente';
   try{localStorage.setItem('tracker_cid_sec_notif',JSON.stringify(SEC.notif));}catch(e){}
   pushRowToGS(r);
   checkSaveReady('notif');
   updateAvancePill();
+  calcKPIs('notif');calcAlerts('notif');
   // Update indicators live
   updateIndKPIsOnly();
 }
@@ -3083,9 +3160,9 @@ function syncFromGS(){
   var old=document.getElementById('_gsSyncScript');if(old)old.remove();
   document.head.appendChild(sc);
 }
-// Auto-sync disabled - only sync on manual save/load
-// // Auto-sync disabled - causes dropdown reset
-// setInterval(function(){syncFromGS();},30000);
+// Auto-sync: ahora es seguro porque applyGSUpdate() no pisa la tabla
+// si el usuario está interactuando con ella (ver window._gsCallback).
+setInterval(function(){syncFromGS();},30000);
 function exportNotifExcel(){
   // Build data from jornadaMap via renderInd data
   var rows=[];
@@ -3288,11 +3365,39 @@ ensureSecHist();
     }catch(e){}
     restoreSlotUI();
     hideSyncBar();
-    // No repaint from GS callback - prevents dropdown reset
+    // Safe repaint: if the user is actively interacting with the table
+    // (a select/input inside it has focus), don't yank it away from them —
+    // just flag that an update is ready. Otherwise, apply it right away.
+    var active=document.activeElement;
+    var busy=active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup');
+    if(busy){
+      var banner=document.getElementById('gs-update-banner');
+      if(banner)banner.style.display='flex';
+    } else {
+      applyGSUpdate();
+    }
     // Limpiar script tag
     var old=document.getElementById('_gsScript');
     if(old)old.remove();
   };
+function applyGSUpdate(){
+  var banner=document.getElementById('gs-update-banner');
+  if(banner)banner.style.display='none';
+  refreshSec('notif');renderWF('notif');renderNotifTable();
+  refreshSec('syp');refreshSec('sup');
+  updateAvancePill();restoreSlotUI();
+  calcKPIs('notif');calcAlerts('notif');
+  if(document.getElementById('ind-panel-notif'))renderInd();
+  toast('🔄 Actualizado con cambios de otros usuarios','ok');
+}
+function btnSyncNow(){
+  if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
+    toast('La sincronización con Google Sheets no está configurada','warn');
+    return;
+  }
+  toast('🔄 Buscando cambios…','ok');
+  syncFromGS();
+}
 function lsLoad(){
   // Cargar desde localStorage primero (respaldo inmediato)
   try{
