@@ -158,7 +158,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-09-11-10</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-09-11-11</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -3152,7 +3152,9 @@ function goSubTab(sec,sub){
   if(sub==='hist')renderHist(sec);
 }
 var _gsSyncPending=false;
+var _gsSyncManual=false;
 function syncFromGS(manual){
+  _gsSyncManual=!!manual;
   if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
     if(manual)toast('❌ Sincronización no configurada (falta URL de Google Sheets)','warn');
     return;
@@ -3277,6 +3279,23 @@ function lsSave(){
 
   window._gsCallback=function(d){
     _gsSyncPending=false;
+    if(_gsSyncManual){
+      console.log('[GS sync] Respuesta completa del servidor:',d);
+      var diag='Respuesta del servidor: ';
+      if(!d){
+        diag+='vacía / null (el Apps Script no devolvió nada usable)';
+      } else {
+        var parts=[];
+        ['syp','notif','sup'].forEach(function(s){
+          var gs=d['sec_'+s];
+          if(!gs)parts.push(s+': no vino ("sec_'+s+'" ausente)');
+          else parts.push(s+': '+(gs.rows?gs.rows.length:0)+' filas, guardado '+(gs._savedAt?new Date(gs._savedAt).toLocaleString('es-PE'):'sin fecha'));
+        });
+        diag+=parts.join(' | ');
+      }
+      toast(diag,(d&&d.sec_notif&&d.sec_notif.rows&&d.sec_notif.rows.length)?'ok':'warn');
+      _gsSyncManual=false;
+    }
     try{
       // Helper: only overwrite rows from GS if local has rows
       // (prevents GS sync from restoring data after borrar base)
