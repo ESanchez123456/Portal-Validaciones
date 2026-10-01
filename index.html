@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB2</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB4</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -1199,7 +1199,7 @@ function chEst(sel){
   var e=getES(r.est);
   sel.style.background=e.bg;sel.style.color=e.fg;sel.style.borderColor=e.bd;
   var sec=r.section||'syp';calcKPIs(sec);calcAlerts(sec);lsSave();pushRowToGS(r);
-  debounceSave();
+  debounceSave(r);
 }
 function chRev(sel){
   var r=findR(sel.dataset.k);if(!r)return;
@@ -1209,21 +1209,22 @@ function chRev(sel){
     var cell=document.getElementById('frev_'+sel.dataset.k);
     if(cell)cell.textContent=r.frev;
   }
-  var sec2=r.section||'syp';calcKPIs(sec2);calcAlerts(sec2);debounceSave();
+  var sec2=r.section||'syp';calcKPIs(sec2);calcAlerts(sec2);debounceSave(r);
 }
 function chVal(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r[sel.dataset.f]=sel.value;
   var o=vopt(sel.value);
   sel.style.background=o.bg;sel.style.color=o.fg;sel.style.borderColor=o.bd;
-  var sec=r.section||'syp';calcKPIs(sec);calcAlerts(sec);debounceSave();
+  var sec=r.section||'syp';calcKPIs(sec);calcAlerts(sec);debounceSave(r);
 }
 
-function debounceSave(){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
+function debounceSave(r){if(r)r._rowTs=Date.now();clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
 function pushRowToGS(r){
   // Nombre histórico de la función; ahora empuja el cambio a Firebase
   // (en vez de Google Sheets) de inmediato, sin esperar el debounce de 1.5s.
   if(!r)return;
+  r._rowTs=Date.now();
   fbSaveSec(r.section||'syp');
 }
 function chFld(el){
@@ -2782,7 +2783,7 @@ function chEstSup(sel){
   if(r.estRev==='No corresponde'){r.rev='';}
   var e=SUP_ES[r.estRev]||SUP_ES['Pendiente'];
   sel.style.background=e.bg;sel.style.color=e.fg;sel.style.borderColor=e.bd;
-  calcKPIs('sup');calcAlerts('sup');debounceSave();
+  calcKPIs('sup');calcAlerts('sup');debounceSave(r);
 }
 function filterParalegalCol(sel){
   var v=sel.value;
@@ -2842,17 +2843,17 @@ function filterV50Col(sel){
 }
 function chFldNotif(el){
   var r=findR(el.dataset.k);if(!r)return;
-  r[el.dataset.f]=el.value;debounceSave();
+  r[el.dataset.f]=el.value;debounceSave(r);
 }
 function chJoseOk(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   r.jose_ok=cb.checked;
-  debounceSave();
+  debounceSave(r);
 }
 function chVal50(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r.val50=sel.value;
-  debounceSave();
+  debounceSave(r);
 }
 function btnGuardarAvance(){
   if(!SEC.notif.rows.length){toast('No hay datos para guardar','warn');return;}
@@ -3112,14 +3113,14 @@ function chValPer(cb){
   // Mark val_ok if either is checked
   r.val_ok=!!(r.val_edu||r.val_cld);
   checkSaveReady('notif');
-  debounceSave();
+  debounceSave(r);
 }
 function chValOk(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   r.val_ok=cb.checked;
   if(cb.checked&&!r.frev){r.frev=now();document.querySelectorAll('[data-k="'+r.key.replace(/"/g,'&quot;')+'"').forEach(function(el){if(el.id&&el.id.indexOf('frev')>=0)el.textContent=r.frev;});}
   checkSaveReady('notif');
-  debounceSave();
+  debounceSave(r);
 }
 function chV50Ok(cb){
   blockPaint();
@@ -3134,11 +3135,11 @@ function chV50Ok(cb){
   updateAvancePill();
   updateIndKPIsOnly();
 }
-function chParOk(cb){var r=findR(cb.dataset.k);if(!r)return;r.par_ok=cb.checked;debounceSave();}
+function chParOk(cb){var r=findR(cb.dataset.k);if(!r)return;r.par_ok=cb.checked;debounceSave(r);}
 function chParalegal(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r.paralegal=sel.value;
-  debounceSave();
+  debounceSave(r);
 }
 function chRevSup(sel){
   var r=findR(sel.dataset.k);if(!r)return;
@@ -3148,9 +3149,9 @@ function chRevSup(sel){
     var cell=document.getElementById('frev_'+sel.dataset.k);
     if(cell)cell.textContent=r.frev;
   }
-  debounceSave();
+  debounceSave(r);
 }
-function chFldSup(el){var r=findR(el.dataset.k);if(!r)return;r[el.dataset.f]=el.value;debounceSave();}
+function chFldSup(el){var r=findR(el.dataset.k);if(!r)return;r[el.dataset.f]=el.value;debounceSave(r);}
 
 // ── Clasificación por reglas (sin IA) ──
 var KW_AGENDA=[
@@ -3254,6 +3255,7 @@ function analizarSuprema(){
   rows.forEach(function(r){
     r.clasificacion=clasificarMovimiento(r);
     r.aiAnalizado=true;
+    r._rowTs=Date.now();
     cnt++;
   });
   status.textContent='✅ '+cnt+' registros clasificados';
@@ -3319,14 +3321,21 @@ function mergeSecSmartJS(old,newSec){
     newSec.slotSaved=old.slotSaved||newSec.slotSaved;
     newSec._clearedAt=old._clearedAt||newSec._clearedAt;
   }else if(incomingRows.length>0&&oldRows.length>0){
-    // Ambos traen filas activas: fusiona campo por campo (no se pisan ediciones)
+    // Ambos traen filas activas: por fila, gana la versión con _rowTs más
+    // reciente (en vez de "si el campo está vacío" — ese criterio trataba
+    // un checkbox desmarcado a propósito (false) como "vacío" y lo volvía
+    // a marcar con el valor viejo del servidor, que era el bug real).
     var oldMap={};oldRows.forEach(function(r){oldMap[r.key]=r;});
     incomingRows.forEach(function(nr){
       var or=oldMap[nr.key];if(!or)return;
-      EDIT_FIELDS.forEach(function(f){
-        var nv=nr[f],ov=or[f];
-        if((nv===undefined||nv===''||nv===false||nv===null)&&(ov!==undefined&&ov!==''&&ov!==false&&ov!==null))nr[f]=ov;
-      });
+      var nts=nr._rowTs||0,ots=or._rowTs||0;
+      if(ots>nts){
+        // El servidor tiene una edición más nueva de esta fila que la que
+        // yo tenía localmente cuando armé mi guardado -> se respeta la suya.
+        EDIT_FIELDS.forEach(function(f){nr[f]=or[f];});
+        nr._rowTs=ots;
+      }
+      // si nts>=ots, mi propia versión es igual o más nueva -> se queda tal cual
     });
   }
   return newSec;
@@ -3335,13 +3344,23 @@ function mergeSecSmartJS(old,newSec){
 function fbSaveSec(sec,isReset){
   if(!FB_ENABLED||!fbDb)return Promise.resolve();
   var ref=fbSecRef(sec);
-  var payload;
-  try{payload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
-  payload._savedAt=Date.now();
-  if(isReset)payload._clearedAt=payload._savedAt;
+  var basePayload;
+  try{basePayload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
+  var savedAt=Date.now();
+  basePayload._savedAt=savedAt;
+  if(isReset)basePayload._clearedAt=savedAt;
   return fbDb.runTransaction(function(tx){
     return tx.get(ref).then(function(doc){
       var old=doc.exists?doc.data():null;
+      // IMPORTANTE: Firestore puede reintentar este callback internamente si
+      // detecta un conflicto de escritura concurrente. mergeSecSmartJS muta
+      // el objeto que recibe (newSec.rows[i]._rowTs, newSec._avances, etc.),
+      // así que si reutilizáramos el mismo objeto `payload` entre reintentos,
+      // un intento perdedor podría dejar mutaciones a medio aplicar que el
+      // siguiente intento heredaría. Por eso se clona `basePayload` desde
+      // cero EN CADA invocación del callback, para que cada intento de la
+      // transacción parta siempre de un snapshot limpio.
+      var payload=JSON.parse(JSON.stringify(basePayload));
       var merged=mergeSecSmartJS(old,payload);
       tx.set(ref,merged);
     });
@@ -3368,14 +3387,18 @@ function fbApplyIncoming(sec,gs){
       if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
     }
   }else if(gs.rows&&gs.rows.length>0){
+    // Igual criterio que en el servidor: por fila, gana quien tenga el
+    // _rowTs más reciente — así un check/uncheck deliberado nunca se
+    // revierte por un guardado de otro usuario con datos más viejos.
     var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
     var gsMap={};gs.rows.forEach(function(r){gsMap[r.key]=r;});
     localRows.forEach(function(lr){
       var gr=gsMap[lr.key];if(!gr)return;
-      EDIT_FIELDS.forEach(function(f){
-        var gv=gr[f],lv=lr[f];
-        if((lv===undefined||lv===''||lv===false||lv===null)&&(gv!==undefined&&gv!==''&&gv!==false&&gv!==null))lr[f]=gv;
-      });
+      var lts=lr._rowTs||0,gts=gr._rowTs||0;
+      if(gts>lts){
+        EDIT_FIELDS.forEach(function(f){lr[f]=gr[f];});
+        lr._rowTs=gts;
+      }
     });
   }
 }
