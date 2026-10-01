@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB1</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB2</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -306,9 +306,8 @@ tr:hover td{background:#f7faff}
     <div class="kcard2"><div class="knum" id="kT-notif" style="color:var(--navy)">0</div><div class="ksub">Total</div><div class="kico">📋</div></div>
     <div class="kcard2"><div class="knum" id="kP-notif" style="color:#d69e2e">0</div><div class="ksub">Pendientes</div><div class="kico">⏳</div></div>
     <div class="kcard2"><div class="knum" id="kR-notif" style="color:var(--green)">0</div><div class="ksub">Revisados</div><div class="kico">✅</div></div>
-    <div class="kcard2"><div class="knum" id="kI-notif" style="color:var(--red)">0</div><div class="ksub">Incidencia</div><div class="kico">⚠️</div></div>
+    <div class="kcard2"><div class="knum" id="kI-notif" style="color:var(--red)">0</div><div class="ksub">Incidencias (omisiones)</div><div class="kico">⚠️</div></div>
     <div class="kcard2"><div class="knum" id="kA-notif" style="color:var(--purple)">0%</div><div class="ksub">% Avance</div><div class="kico">📊</div></div>
-    <div class="kcard2"><div class="knum" id="kVe-notif" style="color:var(--red)">0</div><div class="ksub">Errores valid.</div><div class="kico">❌</div></div>
   </div>
   <div id="aw-notif" class="abox aw">⚠️ <b id="awn-notif">0</b> registros pendientes</div>
   <div id="ae-notif" class="abox ae">❌ <b id="aen-notif">0</b> registros con error</div>
@@ -965,9 +964,18 @@ function calcKPIs(sec){
   }
   var t=rows.length,ok=rows.filter(function(r){return r.est==='Revisado';}).length;
   sv('kT-'+sec,t);sv('kP-'+sec,rows.filter(function(r){return r.est==='Pendiente';}).length);
-  sv('kR-'+sec,ok);sv('kI-'+sec,rows.filter(function(r){return r.est==='Con incidencia';}).length);
+  sv('kR-'+sec,ok);
+  // Notificaciones: "Incidencia" = omisión detectada = se llenaron los 3
+  // campos Tipificación + Subtipificación + Obs. validación en la fila
+  // (antes había una tarjeta "Incidencia" y otra "Errores valid." separadas
+  // que mostraban lo mismo; se unificaron en esta sola).
+  if(sec==='notif'){
+    sv('kI-'+sec,rows.filter(function(r){return r.tif&&r.stif&&r.ov;}).length);
+  }else{
+    sv('kI-'+sec,rows.filter(function(r){return r.est==='Con incidencia';}).length);
+    sv('kVe-'+sec,rows.filter(function(r){return hv(r,'error');}).length);
+  }
   sv('kA-'+sec,t?Math.round(ok/t*100)+'%':'0%');
-  sv('kVe-'+sec,rows.filter(function(r){return hv(r,'error');}).length);
 }
 function calcAlerts(sec){
   sec=sec||'syp';var rows=SEC[sec].rows;
@@ -1001,7 +1009,17 @@ function syncAvanceRows(){
 }
 var _paintBlocked=false;
 var _paintPending={};
-function blockPaint(){_paintBlocked=true;if(_unblockTimer)clearTimeout(_unblockTimer);_unblockTimer=setTimeout(function(){_paintBlocked=false;_unblockTimer=null;},10000);}
+function blockPaint(){
+  _paintBlocked=true;
+  if(_unblockTimer)clearTimeout(_unblockTimer);
+  _unblockTimer=setTimeout(function(){
+    _paintBlocked=false;_unblockTimer=null;
+    // Si quedó pendiente un cambio de otro usuario mientras se bloqueaba el
+    // repintado, aplícalo ahora que el usuario ya dejó de editar.
+    var banner=document.getElementById('gs-update-banner');
+    if(banner&&banner.style.display==='flex')fbApplyUpdate();
+  },10000);
+}
 var _unblockTimer=null;
 function paint(sec){
   sec=sec||'syp';
@@ -1608,29 +1626,53 @@ function dlXLSXSlot(fecha,slotId,sec){sec=sec||'syp';
 }
 
 // ---- INDICADORES ----
+var _tifChartMode='day';
+function tifChartSetMode(m){_tifChartMode=m;renderInd();}
+function _tifPeriodOf(fc2,mode){
+  var d=parseDate(fc2);
+  if(!d)return{key:fc2||'—',label:fc2||'—',sortDate:null};
+  if(mode==='week'){
+    var day=d.getDay();
+    var diffToMonday=(day===0?-6:1-day);
+    var monday=new Date(d.getFullYear(),d.getMonth(),d.getDate()+diffToMonday);
+    return{key:pad(monday.getDate())+'/'+pad(monday.getMonth()+1)+'/'+monday.getFullYear(),
+           label:'Sem '+pad(monday.getDate())+'/'+pad(monday.getMonth()+1),sortDate:monday};
+  }
+  if(mode==='month'){
+    var mn=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return{key:pad(d.getMonth()+1)+'/'+d.getFullYear(),
+           label:mn[d.getMonth()]+' '+d.getFullYear(),sortDate:new Date(d.getFullYear(),d.getMonth(),1)};
+  }
+  return{key:fc2,label:fc2,sortDate:d};
+}
 function buildTifChart(rows){
+  var mode=_tifChartMode||'day';
+  var modes=[{k:'day',l:'Día'},{k:'week',l:'Semana'},{k:'month',l:'Mes'}];
+  var toggle='<div style="display:flex;gap:4px;margin-left:auto">'+modes.map(function(m){
+    return'<button onclick="tifChartSetMode(\''+m.k+'\')" style="padding:4px 12px;border-radius:7px;border:1px solid '+(mode===m.k?'#1BC5BD':'var(--border)')+';background:'+(mode===m.k?'#1BC5BD':'#fff')+';color:'+(mode===m.k?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+m.l+'</button>';
+  }).join('')+'</div>';
   var wrap='<div style="margin-bottom:18px">'+
-    '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📈 Evolución de omisiones por tipificación</div>';
+    '<div style="display:flex;align-items:center;margin-bottom:8px">'+
+    '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📈 Evolución de omisiones por tipificación</div>'+toggle+'</div>';
   if(!rows.length){
     return wrap+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin omisiones registradas todavía</div></div>';
   }
-  // Group: date -> tif -> count
+  // Group: periodo (día/semana/mes) -> tif -> count
   var dateMap={};
+  var periodLabel={};
+  var periodSort={};
   var tifSet=[];
   rows.forEach(function(r){
-    var d=r.fc2||'—';
-    if(!dateMap[d])dateMap[d]={};
+    var p=_tifPeriodOf(r.fc2,mode);
+    var d=p.key;
+    if(!dateMap[d]){dateMap[d]={};periodLabel[d]=p.label;periodSort[d]=p.sortDate;}
     var t=r.tif||'—';
     dateMap[d][t]=(dateMap[d][t]||0)+1;
     if(tifSet.indexOf(t)<0)tifSet.push(t);
   });
   var dates=Object.keys(dateMap).sort(function(a,b){
-    // try dd/mm/yyyy parse, fallback to string compare
-    var pa=a.split('/'),pb=b.split('/');
-    if(pa.length===3&&pb.length===3){
-      var da=new Date(pa[2],pa[1]-1,pa[0]),db=new Date(pb[2],pb[1]-1,pb[0]);
-      return da-db;
-    }
+    var da=periodSort[a],db=periodSort[b];
+    if(da&&db)return da-db;
     return a.localeCompare(b);
   });
   var palette=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#166534','#1e40af'];
@@ -1663,7 +1705,7 @@ function buildTifChart(rows){
       yCursor-=h;
       svg+='<rect x="'+x+'" y="'+yCursor+'" width="'+barW+'" height="'+h+'" fill="'+colorOf[t]+'"><title>'+esc(t)+': '+v+'</title></rect>';
     });
-    svg+='<text x="'+(x+barW/2)+'" y="'+(padT+chartH+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(d)+'</text>';
+    svg+='<text x="'+(x+barW/2)+'" y="'+(padT+chartH+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(periodLabel[d]||d)+'</text>';
   });
   svg+='</svg>';
   var legend='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #eef1f5">';
@@ -2166,9 +2208,13 @@ function renderInd(){
     var detRows=notifAll2.filter(function(r){return !!r.tif;}).sort(function(a,b){
       return (a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
     });
+    window._lastOmisionesRows=detRows;
     var v50Badge={'Jose Gutierrez':{bg:'#fef9c3',fg:'#744210'},'Jemima Gonzales':{bg:'#ede9fe',fg:'#553c9a'},'Nestor Rossell':{bg:'#fefce8',fg:'#713f12'}};
     notifH+='<div style="margin-bottom:18px">'+
-      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📋 Detalle de omisiones ('+detRows.length+')</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📋 Detalle de omisiones ('+detRows.length+')</div>'+
+      '<button class="btn bg" style="font-size:11px;padding:5px 12px;margin-left:auto" onclick="exportOmisionesExcel()">📊 Exportar Excel</button>'+
+      '</div>'+
       '<div style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px">'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead style="position:sticky;top:0;z-index:1"><tr style="background:#042433;color:#fff;text-align:left">'+
@@ -2817,18 +2863,32 @@ function btnGuardarAvance(){
   // Get fecha from notif Excel (fc2 of first row)
   var fechaNotif=rows.length>0?(rows[0].fc2||todayStr()):todayStr();
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-  // Push a new avance snapshot — each "Guardar avance" is its own saved day/lote
+  // Un solo avance guardado por día de calendario: si ya existe uno con la
+  // fecha de hoy, se actualiza en el mismo lugar (mismo id) en vez de crear
+  // uno nuevo — así "Guardar avance" varias veces el mismo día no duplica.
   SEC.notif._avances=SEC.notif._avances||[];
-  SEC.notif._avances.push({
-    id:Date.now(),
-    fecha:todayStr(),
+  var hoy=todayStr();
+  // id determinístico por día (YYYYMMDD) — así, si Claudia y Edu guardan
+  // avance el mismo día desde pantallas distintas, el servidor los fusiona
+  // en el MISMO registro (mergeSecSmartJS hace merge por id), no en dos.
+  var hoyParts=hoy.split('/');
+  var dayId=Number(hoyParts[2]+hoyParts[1]+hoyParts[0]);
+  var existing=SEC.notif._avances.find(function(a){return a.id===dayId||a.fecha===hoy;});
+  var avPayload={
+    id:dayId,
+    fecha:hoy,
     fechaNotif:fechaNotif,
     hora:hora,
     pct:pct,valOk:valOk,total:total,
     rows:JSON.parse(JSON.stringify(rows)),
     slotLoaded:JSON.parse(JSON.stringify(SEC.notif.slotLoaded)),
     slotData:JSON.parse(JSON.stringify(SEC.notif.slotData))
-  });
+  };
+  if(existing){
+    SEC.notif._avances[SEC.notif._avances.indexOf(existing)]=avPayload;
+  }else{
+    SEC.notif._avances.push(avPayload);
+  }
   lsSave();
   updateAvancePill();
   // Clear view to allow new reports
@@ -3346,7 +3406,11 @@ function fbStartListeners(){
       var gs=doc.data();
       fbApplyIncoming(sec,gs);
       var active=document.activeElement;
-      var busy=active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup');
+      // No repintar la tabla completa mientras el usuario está activamente
+      // haciendo clic/editando (foco en la tabla O dentro de los 10s
+      // posteriores a su último clic — _paintBlocked). Repintar a mitad de
+      // un clic de checkbox es lo que causaba que el check se "desmarcara".
+      var busy=(active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup'))||_paintBlocked;
       if(busy){
         var banner=document.getElementById('gs-update-banner');
         if(banner)banner.style.display='flex';
@@ -3355,6 +3419,20 @@ function fbStartListeners(){
       }
     },function(e){console.warn('Firebase listener error ('+sec+'):',e);});
   });
+}
+function exportOmisionesExcel(){
+  var rows=window._lastOmisionesRows||[];
+  if(!rows.length){toast('No hay omisiones para exportar','warn');return;}
+  var wb=XLSX.utils.book_new();
+  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Revisor']];
+  rows.forEach(function(r){
+    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',r.val50||'']);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols']=[{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16}];
+  XLSX.utils.book_append_sheet(wb,ws,'Omisiones');
+  XLSX.writeFile(wb,'detalle_omisiones_'+todayStr().replace(/\//g,'-')+'.xlsx');
+  toast('📥 Exportado correctamente','ok');
 }
 function exportNotifExcel(){
   // Build data from jornadaMap via renderInd data
