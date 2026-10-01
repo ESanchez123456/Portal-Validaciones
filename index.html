@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB5</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB6</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -1456,12 +1456,13 @@ function btnBorrar(sec){
     var fk=document.getElementById('kFecha-sup');if(fk)fk.textContent='—';
     var st=document.getElementById('ai-status');if(st)st.textContent='';
   }
-  // Save empty state to localStorage AND Firebase
+  // Un solo guardado (local + Firebase) con el estado ya vacío. _clearedAt
+  // ya quedó seteado arriba (> que el _savedAt que haya en el servidor), así
+  // que lsSave()->fbSaveAll() ya es suficiente para que el servidor acepte
+  // el borrado total (ver isFullReset en mergeSecSmartJS). Un segundo
+  // fbSaveSec() aquí solo lanzaría una transacción extra en paralelo contra
+  // el mismo documento sin necesidad.
   lsSave();
-  // Push empty state to Firebase immediately as a deliberate reset
-  // (isReset=true marks _clearedAt newer than the server's _savedAt so
-  // the Firestore transaction accepts the wipe instead of protecting old data)
-  fbSaveSec(sec,true);
   refreshSec(sec);renderWF(sec);renderHist(sec);updateAvancePill();renderInd();
   toast('🗑 Base, avances e histórico borrados','warn');
 }
@@ -2890,7 +2891,6 @@ function btnGuardarAvance(){
   }else{
     SEC.notif._avances.push(avPayload);
   }
-  lsSave();
   updateAvancePill();
   // Clear view to allow new reports
   SEC.notif.rows=[];
@@ -2900,13 +2900,16 @@ function btnGuardarAvance(){
     SEC.notif.slotLoaded[s]=false;
     SEC.notif.slotSaved[s]=false;
   });
+  // IMPORTANTE: un solo guardado (local + Firebase), con el estado YA final
+  // (avance agregado + tabla vacía). Antes había un lsSave() aquí Y otro más
+  // arriba (con las 94 filas todavía puestas, antes de limpiar) — eso lanzaba
+  // DOS transacciones de Firestore casi en paralelo contra el mismo documento:
+  // una con la tabla llena y otra con la tabla vacía. Si la de "tabla llena"
+  // tardaba un poco más en confirmar en el servidor (common con la red), su
+  // resultado llegaba DESPUÉS y pisaba el vaciado recién guardado — por eso
+  // la data "revivía" y parecía que Guardar avance no limpiaba nada. Con un
+  // solo guardado no hay dos transacciones compitiendo por el mismo doc.
   lsSave();
-  // Empujar el estado vacío (+ el avance recién guardado) a Firebase YA,
-  // no al próximo debounce: si no se hace, el siguiente onSnapshot todavía
-  // trae la data vieja del servidor y fbApplyIncoming la repone en la tabla
-  // local (porque ve la tabla local en 0 filas y adopta la del servidor),
-  // dejando "visible" lo que se acababa de guardar como avance.
-  fbSaveSec('notif');
   refreshSec('notif');renderWF('notif');
   SEC.notif.slots.forEach(function(s){
     var l=document.getElementById('lbl-'+s);if(l)l.classList.remove('loaded');
@@ -2961,7 +2964,6 @@ function btnCerrarNotif(){
     SEC.notif.slotSaved[s]=false;
   });
   lsSave();
-  fbSaveSec('notif'); // empujar el cierre (rows vacío + hist nuevo) ya, no al próximo debounce
   updateAvancePill();
   refreshSec('notif');renderWF('notif');renderHist('notif');
   renderInd();
