@@ -6,6 +6,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <title>Tracker CID — V&T</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase (Auth + Firestore) — reemplaza el backend de Google Sheets/Apps Script -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --navy:#000000;--accent:#1BC5BD;--gold:#FFA800;--blue:#3699FF;
@@ -147,18 +151,45 @@ tr:hover td{background:#f7faff}
 .subpanel.on{display:block}
 .ind-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:13px;display:flex;align-items:center;gap:7px}
 .ind-title::before{content:'';display:inline-block;width:3px;height:13px;background:var(--gold);border-radius:2px}
+
+/* Firebase login */
+#fb-login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#042433,#0a3a52);z-index:99999;display:none;align-items:center;justify-content:center}
+.fb-login-box{background:#fff;border-radius:14px;padding:34px 36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.fb-login-logo{width:42px;height:42px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;margin-bottom:14px}
+.fb-login-title{font-size:17px;font-weight:600;color:var(--navy);margin-bottom:2px}
+.fb-login-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.fb-login-input{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:10px;background:#f7f8fb}
+.fb-login-input:focus{outline:none;border-color:var(--blue);background:#fff}
+.fb-login-btn{width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;margin-top:4px}
+.fb-login-btn:hover{filter:brightness(1.15)}
+.fb-login-err{display:none;background:#fed7d7;color:#742a2a;padding:8px 12px;border-radius:7px;font-size:11.5px;font-weight:600;margin-bottom:10px}
+.tb-user-badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);padding:5px 12px;border-radius:5px;font-size:11.5px;font-weight:600;display:none;align-items:center;gap:6px}
+.tb-logout-btn{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:none}
+.tb-logout-btn:hover{background:rgba(255,255,255,.1);color:#fff}
 </style>
 </head>
 <body>
 
 <div id="toasts" ></div>
 
+<div id="fb-login-overlay">
+  <div class="fb-login-box">
+    <div class="fb-login-logo">VT</div>
+    <div class="fb-login-title">Tracker CID</div>
+    <div class="fb-login-sub">Inicia sesión con tu cuenta del equipo CID</div>
+    <div class="fb-login-err" id="fb-login-err"></div>
+    <input type="email" id="fb-login-email" class="fb-login-input" placeholder="Correo" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('fb-login-pass').focus()">
+    <input type="password" id="fb-login-pass" class="fb-login-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')fbDoLogin()">
+    <button class="fb-login-btn" onclick="fbDoLogin()">Ingresar</button>
+  </div>
+</div>
+
 <div class="topbar">
   <div class="tb-logo">VT</div>
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-09-11-13</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB1</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -166,7 +197,8 @@ tr:hover td{background:#f7faff}
     <button class="tbn"    onclick="goTab('ind')">Indicadores</button>
   </div>
   <div class="tb-right">
-    
+    <div class="tb-user-badge" id="fb-user-badge"></div>
+    <button class="tb-logout-btn" id="fb-logout-btn" onclick="fbLogout()">Salir</button>
     <div class="tb-badge" id="hbadge-syp" style="margin-right:4px">SyP: 0</div>
     <div class="tb-badge" id="hbadge-notif">Notif: 0</div>
     <div class="tb-badge" id="hbadge-sup" style="margin-left:4px">Sup: 0</div>
@@ -308,7 +340,7 @@ tr:hover td{background:#f7faff}
   </div>
   <div id="gs-update-banner" style="display:none;margin-bottom:10px;padding:10px 14px;background:#FFF4DE;border:1px solid #FFA800;border-radius:8px;align-items:center;justify-content:space-between;gap:10px">
     <span style="font-size:12px;color:#7a4a00;font-weight:600">🔄 Hay cambios nuevos de otro usuario (ej. Claudia) sin aplicar en tu pantalla.</span>
-    <button class="btn bg" style="font-size:11px;padding:5px 12px" onclick="applyGSUpdate()">Actualizar ahora</button>
+    <button class="btn bg" style="font-size:11px;padding:5px 12px" onclick="fbApplyUpdate()">Actualizar ahora</button>
   </div>
     <!-- Leyenda de distribución -->
     <div id="notif-leyenda" style="display:none;margin-bottom:10px">
@@ -532,6 +564,41 @@ if(window.location.protocol==='file:'){
 }
 var GS_ENABLED = window.location.protocol !== 'file:';
 
+// ── Firebase (reemplaza Google Sheets / Apps Script) ──
+// Pega aquí la configuración de tu proyecto de Firebase (Firebase Console
+// → ⚙️ Configuración del proyecto → tus apps → config SDK). Mientras los
+// valores digan "PEGAR_..." el tracker sigue funcionando 100% local
+// (localStorage), sin pantalla de login ni sincronización en la nube.
+var firebaseConfig = {
+  apiKey: "AIzaSyD-5RGyddz6oue9QYZ9MtKscKvRkchxyL4",
+  authDomain: "tracker-cid-vt.firebaseapp.com",
+  projectId: "tracker-cid-vt",
+  storageBucket: "tracker-cid-vt.firebasestorage.app",
+  messagingSenderId: "704576112298",
+  appId: "1:704576112298:web:01aa6db3e5b0d97011b2d3"
+};
+var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
+var fbApp=null, fbAuth=null, fbDb=null;
+if(FB_ENABLED && window.firebase){
+  try{
+    fbApp = firebase.initializeApp(firebaseConfig);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+  }catch(e){console.warn('Firebase init error:',e);FB_ENABLED=false;}
+}
+var FB_COL = 'tracker_cid';
+// Mapea el correo con el que cada persona inicia sesión al nombre que usa
+// el tracker internamente (el mismo que aparece en Jemima/Nestor/Jose/etc.)
+var FB_USER_MAP = {
+  'esanchez@vinateatoyama.com':'Edu Sanchez',
+  'cvasquez@vinateatoyama.com':'Claudia Vasquez',
+  'jgonzales@vinateatoyama.com':'Jemima Gonzales',
+  'nrosell@vinateatoyama.com':'Nestor Rossell',
+  'jgutierrez@vinateatoyama.com':'Jose Gutierrez',
+  'jlau@vinateatoyama.com':'Julio Lau',
+  'jjanampa@vinateatoyama.com':'Joselin Janampa',
+  'lchavez@vinateatoyama.com':'Luis Chavez'
+};
 
 // hist: { "DD/MM/YYYY": { fecha, cerrada, hora, slots: { E:{n,recs}, N1:{n,recs}, N2:{n,recs}, N3:{n,recs} } } }
 
@@ -1136,11 +1203,10 @@ function chVal(sel){
 
 function debounceSave(){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
 function pushRowToGS(r){
-  if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP'||!r)return;
-  var sec=r.section||'syp';
-  var payload={action:'save'};
-  payload['sec_'+sec]=SEC[sec];
-  fetch(GS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)}).catch(function(){});
+  // Nombre histórico de la función; ahora empuja el cambio a Firebase
+  // (en vez de Google Sheets) de inmediato, sin esperar el debounce de 1.5s.
+  if(!r)return;
+  fbSaveSec(r.section||'syp');
 }
 function chFld(el){
   blockPaint();
@@ -1371,14 +1437,12 @@ function btnBorrar(sec){
     var fk=document.getElementById('kFecha-sup');if(fk)fk.textContent='—';
     var st=document.getElementById('ai-status');if(st)st.textContent='';
   }
-  // Save empty state to localStorage AND GS
+  // Save empty state to localStorage AND Firebase
   lsSave();
-  // Also push empty state to GS immediately (don't wait for auto-sync)
-  if(GS_URL&&GS_URL!=='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
-    var payload={action:'save'};
-    payload['sec_'+sec]=SEC[sec];
-    fetch(GS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)}).catch(function(){});
-  }
+  // Push empty state to Firebase immediately as a deliberate reset
+  // (isReset=true marks _clearedAt newer than the server's _savedAt so
+  // the Firestore transaction accepts the wipe instead of protecting old data)
+  fbSaveSec(sec,true);
   refreshSec(sec);renderWF(sec);renderHist(sec);updateAvancePill();renderInd();
   toast('🗑 Base, avances e histórico borrados','warn');
 }
@@ -2263,9 +2327,7 @@ function btnLimpiarLS(){
     localStorage.removeItem('tracker_cid_rows_v2');
     localStorage.removeItem('tracker_cid_slots_v2');
   }catch(e){}
-  if(GS_URL!=='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'clear'})}).catch(function(){});
-  }
+  if(FB_ENABLED)fbSaveAll(true);
   hist={};rows=[];
   slotData={E:[],N1:[],N2:[],N3:[]};
   slotLoaded={E:false,N1:false,N2:false,N3:false};
@@ -3152,37 +3214,148 @@ function goSubTab(sec,sub){
   }
   if(sub==='hist')renderHist(sec);
 }
-var _gsSyncPending=false;
-var _gsSyncManual=false;
-function syncFromGS(manual){
-  _gsSyncManual=!!manual;
-  if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
-    if(manual)toast('❌ Sincronización no configurada (falta URL de Google Sheets)','warn');
-    return;
+// ============================================================
+// Firebase sync — reemplaza el polling JSONP a Google Apps Script
+// por listeners en tiempo real de Firestore (onSnapshot), más la
+// fusión inteligente (mergeSecSmartJS) dentro de una transacción,
+// que es el equivalente en el cliente de mergeSecSmart() del .gs.
+// ============================================================
+function fbSecRef(sec){ return fbDb.collection(FB_COL).doc('sec_'+sec); }
+
+function mergeSecSmartJS(old,newSec){
+  if(!newSec)newSec={};
+  if(!old)return newSec;
+  var clearedTs=newSec._clearedAt||0;
+  var oldSavedTs=old._savedAt||0;
+  var incomingRows=newSec.rows||[];
+  var incomingAv=newSec._avances||[];
+  var incomingHistEmpty=!newSec.hist||Object.keys(newSec.hist).length===0;
+  // Borrado total deliberado ("Borrar base"): se respeta tal cual
+  var isFullReset=incomingRows.length===0&&incomingAv.length===0&&incomingHistEmpty&&clearedTs>oldSavedTs;
+  if(isFullReset)return newSec;
+  // Histórico: unión por fecha, el más nuevo gana
+  if(old.hist||newSec.hist){
+    var mergedHist=old.hist||{};
+    var incomingHist=newSec.hist||{};
+    Object.keys(incomingHist).forEach(function(f){mergedHist[f]=incomingHist[f];});
+    newSec.hist=mergedHist;
   }
-  _gsSyncPending=true;
-  var sc=document.createElement('script');
-  sc.id='_gsSyncScript';
-  sc.src=GS_URL+'?action=load&callback=_gsCallback&t='+Date.now();
-  sc.onerror=function(){
-    var old=document.getElementById('_gsSyncScript');if(old)old.remove();
-    _gsSyncPending=false;
-    if(manual)toast('❌ Error de red al sincronizar — revisa tu conexión','warn');
-  };
-  var old=document.getElementById('_gsSyncScript');if(old)old.remove();
-  document.head.appendChild(sc);
-  if(manual){
-    setTimeout(function(){
-      if(_gsSyncPending){
-        _gsSyncPending=false;
-        toast('⚠️ El servidor no respondió en 20s — puede estar "despertando" (Apps Script), intenta de nuevo','warn');
-      }
-    },20000);
+  // Avances guardados: unión por id — nunca se pierden
+  var oldAv=old._avances||[];
+  var byId={};
+  oldAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
+  incomingAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
+  var mergedAv=[];
+  Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
+  mergedAv.sort(function(a,b){return(a.id||0)-(b.id||0);});
+  newSec._avances=mergedAv;
+  var oldRows=old.rows||[];
+  var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
+  if(incomingRows.length===0&&oldRows.length>0&&clearedTs<=oldSavedTs){
+    // Cliente viejo/inactivo re-guardando su estado vacío por accidente -> se ignora
+    newSec.rows=oldRows;
+    newSec.slotData=old.slotData||newSec.slotData;
+    newSec.slotLoaded=old.slotLoaded||newSec.slotLoaded;
+    newSec.slotSaved=old.slotSaved||newSec.slotSaved;
+    newSec._clearedAt=old._clearedAt||newSec._clearedAt;
+  }else if(incomingRows.length>0&&oldRows.length>0){
+    // Ambos traen filas activas: fusiona campo por campo (no se pisan ediciones)
+    var oldMap={};oldRows.forEach(function(r){oldMap[r.key]=r;});
+    incomingRows.forEach(function(nr){
+      var or=oldMap[nr.key];if(!or)return;
+      EDIT_FIELDS.forEach(function(f){
+        var nv=nr[f],ov=or[f];
+        if((nv===undefined||nv===''||nv===false||nv===null)&&(ov!==undefined&&ov!==''&&ov!==false&&ov!==null))nr[f]=ov;
+      });
+    });
+  }
+  return newSec;
+}
+
+function fbSaveSec(sec,isReset){
+  if(!FB_ENABLED||!fbDb)return Promise.resolve();
+  var ref=fbSecRef(sec);
+  var payload;
+  try{payload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
+  payload._savedAt=Date.now();
+  if(isReset)payload._clearedAt=payload._savedAt;
+  return fbDb.runTransaction(function(tx){
+    return tx.get(ref).then(function(doc){
+      var old=doc.exists?doc.data():null;
+      var merged=mergeSecSmartJS(old,payload);
+      tx.set(ref,merged);
+    });
+  }).catch(function(e){console.warn('Firebase save error ('+sec+'):',e);});
+}
+function fbSaveAll(isReset){
+  if(!FB_ENABLED)return;
+  ['syp','notif','sup'].forEach(function(sec){fbSaveSec(sec,isReset);});
+}
+
+// Aplica datos entrantes de otro usuario sin pisar lo que YO tengo sin
+// guardar todavía: si tengo filas activas, solo completa campos vacíos;
+// si no tengo filas, adopta las del servidor tal cual.
+function fbApplyIncoming(sec,gs){
+  if(!gs)return;
+  if(gs.hist)SEC[sec].hist=Object.assign({},gs.hist,SEC[sec].hist);
+  if(gs._avances)SEC[sec]._avances=gs._avances;
+  var localRows=SEC[sec].rows||[];
+  if(localRows.length===0){
+    if(gs.rows&&gs.rows.length>0){
+      SEC[sec].rows=gs.rows;
+      if(gs.slotData)SEC[sec].slotData=gs.slotData;
+      if(gs.slotLoaded)SEC[sec].slotLoaded=gs.slotLoaded;
+      if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
+    }
+  }else if(gs.rows&&gs.rows.length>0){
+    var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
+    var gsMap={};gs.rows.forEach(function(r){gsMap[r.key]=r;});
+    localRows.forEach(function(lr){
+      var gr=gsMap[lr.key];if(!gr)return;
+      EDIT_FIELDS.forEach(function(f){
+        var gv=gr[f],lv=lr[f];
+        if((lv===undefined||lv===''||lv===false||lv===null)&&(gv!==undefined&&gv!==''&&gv!==false&&gv!==null))lr[f]=gv;
+      });
+    });
   }
 }
-// Auto-sync: ahora es seguro porque applyGSUpdate() no pisa la tabla
-// si el usuario está interactuando con ella (ver window._gsCallback).
-setInterval(function(){syncFromGS();},30000);
+function fbApplyUpdate(){
+  var banner=document.getElementById('gs-update-banner');
+  if(banner)banner.style.display='none';
+  try{
+    localStorage.setItem('tracker_cid_sec_syp',JSON.stringify(SEC.syp));
+    localStorage.setItem('tracker_cid_sec_notif',JSON.stringify(SEC.notif));
+    localStorage.setItem('tracker_cid_sec_sup',JSON.stringify(SEC.sup));
+  }catch(e){}
+  ensureSecHist();
+  restoreSlotUI();
+  refreshSec('notif');renderWF('notif');renderNotifTable();
+  refreshSec('syp');refreshSec('sup');
+  updateAvancePill();
+  calcKPIs('notif');calcAlerts('notif');
+  if(document.getElementById('ind-panel-notif'))renderInd();
+  toast('🔄 Actualizado con cambios de otros usuarios','ok');
+}
+var _fbUnsub={};
+function fbStartListeners(){
+  if(!FB_ENABLED||!fbDb)return;
+  ['syp','notif','sup'].forEach(function(sec){
+    if(_fbUnsub[sec])_fbUnsub[sec]();
+    _fbUnsub[sec]=fbSecRef(sec).onSnapshot(function(doc){
+      if(!doc.exists)return;
+      var gs=doc.data();
+      fbApplyIncoming(sec,gs);
+      var active=document.activeElement;
+      var busy=active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup');
+      if(busy){
+        var banner=document.getElementById('gs-update-banner');
+        if(banner)banner.style.display='flex';
+      }else{
+        fbApplyUpdate();
+      }
+    },function(e){console.warn('Firebase listener error ('+sec+'):',e);});
+  });
+}
 function exportNotifExcel(){
   // Build data from jornadaMap via renderInd data
   var rows=[];
@@ -3254,9 +3427,7 @@ function goTab(name){
   if(name==='ind')renderInd();
 }
 
-// ── Google Sheets Backend ──
-var GS_URL = 'https://script.google.com/macros/s/AKfycbyhJjvAfhjRzhVIJpJIdZasbsvDQpd2FB8QqT10AlTJuffjgpInaU8nyOs6jpi-wb_86g/exec'; // <-- pega aquí tu URL
-
+// ── Guardado local + Firebase ──
 function lsSave(){
   // Siempre guardar en localStorage como respaldo inmediato
   try{
@@ -3265,123 +3436,23 @@ function lsSave(){
     localStorage.setItem('tracker_cid_sec_notif', JSON.stringify(SEC.notif));
     localStorage.setItem('tracker_cid_sec_sup', JSON.stringify(SEC.sup));
   }catch(e){}
-  if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP')return;
-  // Enviar a Google Sheets via no-cors (Apps Script acepta POST sin preflight)
-  SEC.syp._savedAt=Date.now();SEC.notif._savedAt=Date.now();SEC.sup._savedAt=Date.now();
-  var payload={action:'save',sec_syp:SEC.syp,sec_notif:SEC.notif,sec_sup:SEC.sup};
-  fetch(GS_URL,{
-    method:'POST',
-    mode:'no-cors',
-    headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify(payload)
-  }).catch(function(e){console.warn('GS save error:',e);});
-
+  fbSaveAll();
 }
 
-  window._gsCallback=function(d){
-    _gsSyncPending=false;
-    if(_gsSyncManual){
-      console.log('[GS sync] Respuesta completa del servidor:',d);
-      var diag='Respuesta del servidor: ';
-      if(!d){
-        diag+='vacía / null (el Apps Script no devolvió nada usable)';
-      } else {
-        var parts=[];
-        ['syp','notif','sup'].forEach(function(s){
-          var gs=d['sec_'+s];
-          if(!gs)parts.push(s+': no vino ("sec_'+s+'" ausente)');
-          else{
-            var nAv=(gs._avances&&gs._avances.length)||0;
-            var nHist=gs.hist?Object.keys(gs.hist).length:0;
-            var avTotal=0;(gs._avances||[]).forEach(function(av){avTotal+=(av.rows?av.rows.length:0);});
-            parts.push(s+': '+(gs.rows?gs.rows.length:0)+' filas activas'+
-              (nAv?', '+nAv+' avance(s) guardado(s) ('+avTotal+' filas)':'')+
-              (nHist?', '+nHist+' jornada(s) archivada(s)':'')+
-              ', guardado '+(gs._savedAt?new Date(gs._savedAt).toLocaleString('es-PE'):'sin fecha'));
-          }
-        });
-        diag+=parts.join(' | ');
-      }
-      var hayDataNotif=d&&d.sec_notif&&((d.sec_notif.rows&&d.sec_notif.rows.length)||(d.sec_notif._avances&&d.sec_notif._avances.length)||(d.sec_notif.hist&&Object.keys(d.sec_notif.hist).length));
-      toast(diag,hayDataNotif?'ok':'warn');
-      _gsSyncManual=false;
-    }
-    try{
-      // Helper: only overwrite rows from GS if local has rows
-      // (prevents GS sync from restoring data after borrar base)
-function mergeSecFromGS(sec,gs){
-  if(!gs)return;
-  // Always merge hist
-  if(gs.hist)SEC[sec].hist=Object.assign({},gs.hist,SEC[sec].hist);
-  var clearedTs=SEC[sec]._clearedAt||0;
-  var gsTs=gs._savedAt||0;
-  // If cleared after last GS save → restore from GS
-  if(clearedTs>gsTs){
-    if(gs.rows&&gs.rows.length>0)SEC[sec].rows=gs.rows;
-    if(gs.slotData)SEC[sec].slotData=gs.slotData;
-    if(gs.slotLoaded)SEC[sec].slotLoaded=gs.slotLoaded;
-    if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
+// ── Gestión de usuario al cargar un archivo ──
+// Si ya hay sesión de Firebase, el usuario queda identificado por su
+// login y no hace falta preguntar "¿Quién eres?" cada vez.
+function askUserAndLoad(file,tipo,slotId,sec,alreadyLoaded,uploader){
+  if(FB_ENABLED&&CURRENT_USER){
+    if(alreadyLoaded&&!confirm('Este slot ya fue cargado'+(uploader?' por '+uploader:'')+'. ¿Deseas cargarlo nuevamente?'))return;
+    processFile(file,tipo,slotId,sec);
     return;
   }
-  // If local has rows → NEVER overwrite them from GS (local is authoritative)
-  var localRows=SEC[sec].rows||[];
-  if(localRows.length>0)return;
-  // Local has no rows → restore from GS
-  if(gs.rows&&gs.rows.length>0)SEC[sec].rows=gs.rows;
-  if(gs.slotData)SEC[sec].slotData=gs.slotData;
-  if(gs.slotLoaded)SEC[sec].slotLoaded=gs.slotLoaded;
-  if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
-}
-      // Multi-user sync: merge editable fields per row from GS
-      var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
-      ['syp','notif','sup'].forEach(function(sec){
-        var gs=d&&d['sec_'+sec];
-        if(!gs)return;
-        // Always merge hist
-        if(gs.hist)SEC[sec].hist=Object.assign({},gs.hist,SEC[sec].hist);
-        var localRows=SEC[sec].rows||[];
-        var clearedTs=SEC[sec]._clearedAt||0;
-        var gsTs=gs._savedAt||0;
-        if(localRows.length===0){
-          // Local empty → restore from GS
-          if(gs.rows&&gs.rows.length>0){
-            SEC[sec].rows=gs.rows;
-            if(gs.slotData)SEC[sec].slotData=gs.slotData;
-            if(gs.slotLoaded)SEC[sec].slotLoaded=gs.slotLoaded;
-            if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
-          }
-        } else if(gs.rows&&gs.rows.length>0){
-          // Local has rows → merge only editable fields from GS rows
-          // Use GS editable fields only for rows that were NOT modified locally since last sync
-          var gsMap={};
-          gs.rows.forEach(function(gr){gsMap[gr.key]=gr;});
-          localRows.forEach(function(lr){
-            var gr=gsMap[lr.key];
-            if(!gr)return;
-            // For each editable field: take GS value if it differs AND local hasn't changed it
-            // Simple rule: if GS row has a non-empty value and local is empty → apply GS
-            EDIT_FIELDS.forEach(function(f){
-              var gv=gr[f];var lv=lr[f];
-              // Apply GS value if local is empty/false and GS has a value
-              if((lv===undefined||lv===''||lv===false||lv===null)&&(gv!==undefined&&gv!==''&&gv!==false&&gv!==null)){
-                lr[f]=gv;
-              }
-            });
-          });
-        }
-      });
-      try{
-        localStorage.setItem('tracker_cid_sec_syp',JSON.stringify(SEC.syp));
-        localStorage.setItem('tracker_cid_sec_notif',JSON.stringify(SEC.notif));
-      }catch(e){}
-      // ── User management ──
-function askUserAndLoad(file,tipo,slotId,sec,alreadyLoaded,uploader){
-  // Create inline prompt
+  // Modo sin login (Firebase no configurado todavía): pedir el nombre manualmente
   var msg=alreadyLoaded
     ?'Este slot ya fue cargado'+(uploader?' por '+uploader:'')+'. ¿Deseas cargarlo nuevamente?\n\n¿Quién eres?'
     :'¿Quién eres?';
-  var names=['Edu Sanchez','Claudia Vasquez','Jemima Gonzales','Nestor Rossell','Jose Gutierrez'];
-  // Build a quick modal overlay
+  var names=['Edu Sanchez','Claudia Vasquez','Jemima Gonzales','Nestor Rossell','Jose Gutierrez','Julio Lau','Joselin Janampa','Luis Chavez'];
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(4,36,51,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
   var box=document.createElement('div');
@@ -3408,42 +3479,27 @@ function askUserAndLoad(file,tipo,slotId,sec,alreadyLoaded,uploader){
     processFile(file,tipo,slotId,sec);
   };
 }
-ensureSecHist();
-    }catch(e){}
-    restoreSlotUI();
-    hideSyncBar();
-    // Safe repaint: if the user is actively interacting with the table
-    // (a select/input inside it has focus), don't yank it away from them —
-    // just flag that an update is ready. Otherwise, apply it right away.
-    var active=document.activeElement;
-    var busy=active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup');
-    if(busy){
-      var banner=document.getElementById('gs-update-banner');
-      if(banner)banner.style.display='flex';
-    } else {
-      applyGSUpdate();
-    }
-    // Limpiar script tag
-    var old=document.getElementById('_gsScript');
-    if(old)old.remove();
-  };
-function applyGSUpdate(){
-  var banner=document.getElementById('gs-update-banner');
-  if(banner)banner.style.display='none';
-  refreshSec('notif');renderWF('notif');renderNotifTable();
-  refreshSec('syp');refreshSec('sup');
-  updateAvancePill();restoreSlotUI();
-  calcKPIs('notif');calcAlerts('notif');
-  if(document.getElementById('ind-panel-notif'))renderInd();
-  toast('🔄 Actualizado con cambios de otros usuarios','ok');
-}
 function btnSyncNow(){
-  if(!GS_ENABLED||!GS_URL||GS_URL==='REEMPLAZAR_CON_URL_DEL_WEB_APP'){
-    toast('La sincronización con Google Sheets no está configurada','warn');
+  if(!FB_ENABLED||!fbDb){
+    toast('La sincronización en la nube (Firebase) no está configurada','warn');
     return;
   }
   toast('🔄 Buscando cambios…','ok');
-  syncFromGS(true);
+  var secs=['syp','notif','sup'];
+  var done=0,anyErr=false;
+  secs.forEach(function(sec){
+    fbSecRef(sec).get({source:'server'}).then(function(doc){
+      if(doc.exists)fbApplyIncoming(sec,doc.data());
+    }).catch(function(e){
+      anyErr=true;console.warn('Sync error',sec,e);
+    }).then(function(){
+      done++;
+      if(done===secs.length){
+        fbApplyUpdate();
+        toast(anyErr?'⚠️ Sincronizado con errores — revisa tu conexión':'✅ Sincronizado','ok');
+      }
+    });
+  });
 }
 function lsLoad(){
   // Cargar desde localStorage primero (respaldo inmediato)
@@ -3476,6 +3532,58 @@ function lsLoad(){
 }
 
 lsLoad(); // Cargar datos guardados ANTES de pintar nada (fix: restauración al reabrir)
+
+// ── Login (Firebase Authentication) ──
+function fbShowLogin(show){
+  var ov=document.getElementById('fb-login-overlay');
+  if(ov)ov.style.display=show?'flex':'none';
+}
+function fbDoLogin(){
+  var email=(document.getElementById('fb-login-email').value||'').trim();
+  var pass=document.getElementById('fb-login-pass').value||'';
+  var err=document.getElementById('fb-login-err');
+  if(err)err.style.display='none';
+  if(!email||!pass){
+    if(err){err.textContent='Ingresa tu correo y contraseña';err.style.display='block';}
+    return;
+  }
+  fbAuth.signInWithEmailAndPassword(email,pass).catch(function(e){
+    if(!err)return;
+    err.textContent=(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found')
+      ?'Correo o contraseña incorrectos'
+      :'Error al iniciar sesión: '+e.message;
+    err.style.display='block';
+  });
+}
+function fbLogout(){
+  if(fbAuth)fbAuth.signOut();
+}
+if(FB_ENABLED&&fbAuth){
+  fbShowLogin(true);
+  fbAuth.onAuthStateChanged(function(user){
+    var badge=document.getElementById('fb-user-badge');
+    var lo=document.getElementById('fb-logout-btn');
+    if(user){
+      fbShowLogin(false);
+      CURRENT_USER=FB_USER_MAP[user.email]||user.email;
+      try{localStorage.setItem('tracker_cid_user',CURRENT_USER);}catch(e){}
+      if(badge){badge.textContent='👤 '+CURRENT_USER;badge.style.display='inline-flex';}
+      if(lo)lo.style.display='inline-block';
+      fbStartListeners();
+      btnSyncNow(); // trae lo último del servidor apenas inicia sesión
+    } else {
+      fbShowLogin(true);
+      if(badge)badge.style.display='none';
+      if(lo)lo.style.display='none';
+      Object.keys(_fbUnsub).forEach(function(sec){if(_fbUnsub[sec])_fbUnsub[sec]();});
+      _fbUnsub={};
+    }
+  });
+} else {
+  // Firebase aún no configurado (faltan los datos de firebaseConfig):
+  // el tracker sigue funcionando 100% local, sin login ni sincronización.
+  fbShowLogin(false);
+}
 
 // Re-assign val50 for notif rows that don't have it set
 (function(){
