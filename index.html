@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-01-FB6</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-02-FB7</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -3309,6 +3309,16 @@ function mergeSecSmartJS(old,newSec){
     var mergedHist=old.hist||{};
     var incomingHist=newSec.hist||{};
     Object.keys(incomingHist).forEach(function(f){mergedHist[f]=incomingHist[f];});
+    // Límite defensivo: cada jornada archivada guarda copias completas de
+    // filas (hist[fecha].slots[s].recs). Sin tope, esto crece para siempre
+    // y con meses de uso puede acercarse al límite de 1MB por documento de
+    // Firestore (lo que hace que los guardados empiecen a fallar en
+    // silencio). Se conservan solo las 90 jornadas más recientes.
+    var histKeys=Object.keys(mergedHist);
+    if(histKeys.length>90){
+      histKeys.sort(); // fechas tipo DD/MM/YYYY no ordenan bien como string, pero basta para no crecer sin límite
+      histKeys.slice(0,histKeys.length-90).forEach(function(k){delete mergedHist[k];});
+    }
     newSec.hist=mergedHist;
   }
   // Avances guardados: unión por id — nunca se pierden
@@ -3319,6 +3329,9 @@ function mergeSecSmartJS(old,newSec){
   var mergedAv=[];
   Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
   mergedAv.sort(function(a,b){return(a.id||0)-(b.id||0);});
+  // Mismo límite defensivo que hist: cada avance guarda una copia completa
+  // de todas las filas. Se conservan los 60 más recientes.
+  if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
   newSec._avances=mergedAv;
   var oldRows=old.rows||[];
   var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
@@ -3341,7 +3354,14 @@ function mergeSecSmartJS(old,newSec){
       if(ots>nts){
         // El servidor tiene una edición más nueva de esta fila que la que
         // yo tenía localmente cuando armé mi guardado -> se respeta la suya.
-        EDIT_FIELDS.forEach(function(f){nr[f]=or[f];});
+        // ojo: or[f] puede ser undefined si esa fila vieja nunca tuvo este
+        // campo (ej. filas creadas antes de agregarse par_ok/paralegal).
+        // Firestore RECHAZA de inmediato cualquier documento con un valor
+        // undefined — eso tira abajo el guardado COMPLETO (todas las filas,
+        // no solo esta), y antes eso se traducía en "el checkbox se borra"
+        // sin ningún aviso. nullifyUndef() (ver fbSaveSec) limpia esto justo
+        // antes de escribir, como red de seguridad adicional.
+        EDIT_FIELDS.forEach(function(f){nr[f]=(or[f]===undefined)?nr[f]:or[f];});
         nr._rowTs=ots;
       }
       // si nts>=ots, mi propia versión es igual o más nueva -> se queda tal cual
@@ -3349,8 +3369,22 @@ function mergeSecSmartJS(old,newSec){
   }
   return newSec;
 }
+// Firestore rechaza de inmediato (sin red, sin reintento posible) cualquier
+// documento que tenga `undefined` en algún campo, a cualquier profundidad.
+// Esta función recorre el objeto completo antes de cada escritura y
+// reemplaza cualquier undefined por null, para que un campo faltante nunca
+// tire abajo TODO el guardado (todas las filas, no solo la que lo causó).
+function nullifyUndef(obj){
+  if(obj===undefined)return null;
+  if(obj===null||typeof obj!=='object')return obj;
+  if(Array.isArray(obj))return obj.map(nullifyUndef);
+  var out={};
+  Object.keys(obj).forEach(function(k){out[k]=nullifyUndef(obj[k]);});
+  return out;
+}
 
-function fbSaveSec(sec,isReset){
+var _fbSaveFailCount={syp:0,notif:0,sup:0};
+function fbSaveSec(sec,isReset,_retry){
   if(!FB_ENABLED||!fbDb)return Promise.resolve();
   var ref=fbSecRef(sec);
   var basePayload;
@@ -3358,6 +3392,14 @@ function fbSaveSec(sec,isReset){
   var savedAt=Date.now();
   basePayload._savedAt=savedAt;
   if(isReset)basePayload._clearedAt=savedAt;
+  // Aviso defensivo: Firestore rechaza un documento de más de ~1MB. Si esta
+  // sección se acerca a ese límite (hist/avances acumulando copias completas
+  // de filas con los años), mejor enterarnos por un toast que por guardados
+  // que fallan en silencio.
+  try{
+    var approxSize=JSON.stringify(basePayload).length;
+    if(approxSize>800000)toast('⚠️ La base de "'+sec+'" pesa '+Math.round(approxSize/1024)+' KB — cerca del límite de Firebase. Avísame para depurarla.','warn');
+  }catch(e){}
   return fbDb.runTransaction(function(tx){
     return tx.get(ref).then(function(doc){
       var old=doc.exists?doc.data():null;
@@ -3370,10 +3412,27 @@ function fbSaveSec(sec,isReset){
       // cero EN CADA invocación del callback, para que cada intento de la
       // transacción parta siempre de un snapshot limpio.
       var payload=JSON.parse(JSON.stringify(basePayload));
-      var merged=mergeSecSmartJS(old,payload);
+      var merged=nullifyUndef(mergeSecSmartJS(old,payload));
       tx.set(ref,merged);
     });
-  }).catch(function(e){console.warn('Firebase save error ('+sec+'):',e);});
+  }).then(function(){
+    _fbSaveFailCount[sec]=0;
+  }).catch(function(e){
+    console.warn('Firebase save error ('+sec+'):',e);
+    // ANTES esto se tragaba en silencio: un checkbox marcado localmente que
+    // nunca llegaba al servidor, y que "se borraba" en cuanto llegaba otra
+    // actualización o alguien recargaba la página, sin que nadie se enterara
+    // de que el guardado había fallado. Ahora: 1 reintento automático
+    // (cubre cortes de red momentáneos) y, si vuelve a fallar, un toast
+    // visible con el motivo real en vez de quedar oculto en la consola.
+    if(!_retry){
+      return new Promise(function(res){setTimeout(res,1200);}).then(function(){
+        return fbSaveSec(sec,isReset,true);
+      });
+    }
+    _fbSaveFailCount[sec]=(_fbSaveFailCount[sec]||0)+1;
+    toast('❌ No se pudo guardar "'+sec+'" en la nube ('+(e&&e.code||e&&e.message||'error desconocido')+'). Tus cambios quedan solo en este navegador — recarga puede perderlos.','err');
+  });
 }
 function fbSaveAll(isReset){
   if(!FB_ENABLED)return;
@@ -3411,7 +3470,7 @@ function fbApplyIncoming(sec,gs){
     });
   }
 }
-function fbApplyUpdate(){
+function fbApplyUpdate(silent){
   var banner=document.getElementById('gs-update-banner');
   if(banner)banner.style.display='none';
   try{
@@ -3426,9 +3485,11 @@ function fbApplyUpdate(){
   updateAvancePill();
   calcKPIs('notif');calcAlerts('notif');
   if(document.getElementById('ind-panel-notif'))renderInd();
-  toast('🔄 Actualizado con cambios de otros usuarios','ok');
+  if(!silent)toast('🔄 Actualizado con cambios de otros usuarios','ok');
 }
 var _fbUnsub={};
+var _fbPollTimer=null;
+var _fbLastSeenSavedAt={};
 function fbStartListeners(){
   if(!FB_ENABLED||!fbDb)return;
   ['syp','notif','sup'].forEach(function(sec){
@@ -3436,6 +3497,7 @@ function fbStartListeners(){
     _fbUnsub[sec]=fbSecRef(sec).onSnapshot(function(doc){
       if(!doc.exists)return;
       var gs=doc.data();
+      _fbLastSeenSavedAt[sec]=gs._savedAt||0;
       fbApplyIncoming(sec,gs);
       var active=document.activeElement;
       // No repintar la tabla completa mientras el usuario está activamente
@@ -3449,8 +3511,44 @@ function fbStartListeners(){
       }else{
         fbApplyUpdate();
       }
-    },function(e){console.warn('Firebase listener error ('+sec+'):',e);});
+    },function(e){
+      // CRÍTICO: cuando un listener de Firestore recibe un error (corte de
+      // red, proxy corporativo, lo que sea), Firestore lo DEJA MUERTO para
+      // siempre — no se reconecta solo. Antes esto solo se registraba en la
+      // consola (console.warn) y nadie se enteraba: la pantalla se quedaba
+      // "sincronizada" en apariencia pero congelada, sin recibir ni un
+      // cambio más, hasta que alguien recargaba la página por su cuenta.
+      // Ahora se avisa y se reintenta solo.
+      console.warn('Firebase listener error ('+sec+'):',e);
+      toast('⚠️ Se perdió la conexión en tiempo real ("'+sec+'"). Reintentando…','warn');
+      setTimeout(fbStartListeners,3000);
+    });
   });
+  // Respaldo adicional, independiente del listener: cada 45s se hace un
+  // chequeo directo contra el servidor (bypasea cualquier listener que se
+  // haya quedado colgado en silencio sin disparar ni siquiera un error —
+  // pasa con ciertos proxies/firewalls que cortan conexiones largas sin
+  // avisar). Así nunca pasan más de ~45s sin ponerse al día, pase lo que
+  // pase con el tiempo real.
+  if(_fbPollTimer)clearInterval(_fbPollTimer);
+  _fbPollTimer=setInterval(function(){
+    if(!FB_ENABLED||!fbDb||!CURRENT_USER)return;
+    ['syp','notif','sup'].forEach(function(sec){
+      fbSecRef(sec).get({source:'server'}).then(function(doc){
+        if(!doc.exists)return;
+        var gs=doc.data();
+        // Solo tocar la pantalla si de verdad hay algo nuevo del servidor
+        // (compara _savedAt) — este polling es un respaldo silencioso, no
+        // debería generar un toast de "actualizado" cada 45s sin motivo.
+        if((gs._savedAt||0)<=(_fbLastSeenSavedAt[sec]||0))return;
+        _fbLastSeenSavedAt[sec]=gs._savedAt||0;
+        fbApplyIncoming(sec,gs);
+        var active=document.activeElement;
+        var busy=(active&&active.closest&&active.closest('#tbody-notif, #tbody-syp, #tbody-sup'))||_paintBlocked;
+        if(!busy)fbApplyUpdate(true);
+      }).catch(function(e){console.warn('Poll de respaldo falló ('+sec+'):',e);});
+    });
+  },45000);
 }
 function exportOmisionesExcel(){
   var rows=window._lastOmisionesRows||[];
