@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-02-FB7</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-04-FB8</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -1198,6 +1198,7 @@ function chEst(sel){
   if(r.est==='No corresponde'){r.rev='';r.val='';}
   var e=getES(r.est);
   sel.style.background=e.bg;sel.style.color=e.fg;sel.style.borderColor=e.bd;
+  touchFields(r,['est','rev','val']);
   var sec=r.section||'syp';calcKPIs(sec);calcAlerts(sec);lsSave();pushRowToGS(r);
   debounceSave(r);
 }
@@ -1209,22 +1210,40 @@ function chRev(sel){
     var cell=document.getElementById('frev_'+sel.dataset.k);
     if(cell)cell.textContent=r.frev;
   }
+  touchFields(r,['rev','frev']);
   var sec2=r.section||'syp';calcKPIs(sec2);calcAlerts(sec2);debounceSave(r);
 }
 function chVal(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r[sel.dataset.f]=sel.value;
+  touchFields(r,[sel.dataset.f]);
   var o=vopt(sel.value);
   sel.style.background=o.bg;sel.style.color=o.fg;sel.style.borderColor=o.bd;
   var sec=r.section||'syp';calcKPIs(sec);calcAlerts(sec);debounceSave(r);
 }
 
-function debounceSave(r){if(r)r._rowTs=Date.now();clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
+// IMPORTANTE: antes "_rowTs" era UNA sola marca de tiempo por FILA, y la
+// fusión decidía "quién gana" copiando TODOS los campos editables en bloque
+// según esa única marca. Eso significaba que si Edu marcaba el checkbox de
+// una fila y, casi al mismo tiempo, Jemima llenaba la tipificación de ESA
+// MISMA fila (un campo totalmente distinto), el que guardara con el
+// timestamp más nuevo se llevaba TODOS los campos — incluyendo el checkbox
+// del otro, que terminaba revertido sin que nadie lo tocara. Por eso "se
+// borraba justo cuando salía el aviso de sincronizado". Ahora cada CAMPO
+// lleva su propia marca de tiempo en r._fieldTs, y la fusión compara campo
+// por campo — editar tipificación ya no puede pisar un checkbox.
+function touchFields(r,fields){
+  if(!r)return;
+  r._fieldTs=r._fieldTs||{};
+  var now=Date.now();
+  (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
+  r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
+}
+function debounceSave(r){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
 function pushRowToGS(r){
   // Nombre histórico de la función; ahora empuja el cambio a Firebase
   // (en vez de Google Sheets) de inmediato, sin esperar el debounce de 1.5s.
   if(!r)return;
-  r._rowTs=Date.now();
   fbSaveSec(r.section||'syp');
 }
 function chFld(el){
@@ -1244,6 +1263,7 @@ function chFld(el){
     if(!r)return;
   }
   r[el.dataset.f]=el.value;
+  touchFields(r,[el.dataset.f]);
   // Save immediately to localStorage (no debounce) to prevent loss on repaint
   try{
     localStorage.setItem('tracker_cid_sec_'+r.section,JSON.stringify(SEC[r.section]));
@@ -2784,6 +2804,7 @@ function chEstSup(sel){
   if(r.estRev==='No corresponde'){r.rev='';}
   var e=SUP_ES[r.estRev]||SUP_ES['Pendiente'];
   sel.style.background=e.bg;sel.style.color=e.fg;sel.style.borderColor=e.bd;
+  touchFields(r,['estRev','rev']);
   calcKPIs('sup');calcAlerts('sup');debounceSave(r);
 }
 function filterParalegalCol(sel){
@@ -3106,6 +3127,7 @@ function chValOkSingle(cb){
   if(!r.frev)r.frev=todayStr();
   // Sync estado con la validación: esto es lo que alimenta las tarjetas de arriba (Total/Pendientes/Revisados/% Avance)
   r.est=r.val_ok?'Revisado':'Pendiente';
+  touchFields(r,['val_ok','frev','est']);
   try{localStorage.setItem('tracker_cid_sec_notif',JSON.stringify(SEC.notif));}catch(e){}
   pushRowToGS(r);
   checkSaveReady('notif');
@@ -3121,6 +3143,7 @@ function chValPer(cb){
   else if(who==='cld'){r.val_cld=cb.checked;if(cb.checked&&!r.frev)r.frev=now();}
   // Mark val_ok if either is checked
   r.val_ok=!!(r.val_edu||r.val_cld);
+  touchFields(r,['val_ok','frev']);
   checkSaveReady('notif');
   debounceSave(r);
 }
@@ -3128,6 +3151,7 @@ function chValOk(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   r.val_ok=cb.checked;
   if(cb.checked&&!r.frev){r.frev=now();document.querySelectorAll('[data-k="'+r.key.replace(/"/g,'&quot;')+'"').forEach(function(el){if(el.id&&el.id.indexOf('frev')>=0)el.textContent=r.frev;});}
+  touchFields(r,['val_ok','frev']);
   checkSaveReady('notif');
   debounceSave(r);
 }
@@ -3136,6 +3160,7 @@ function chV50Ok(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   var f=cb.dataset.f50;
   if(f)r[f]=cb.checked;
+  if(f)touchFields(r,[f]);
   syncAvanceRows();
   // Save synchronously to ensure persistence on close
   try{localStorage.setItem('tracker_cid_sec_notif',JSON.stringify(SEC.notif));}catch(e){}
@@ -3144,10 +3169,11 @@ function chV50Ok(cb){
   updateAvancePill();
   updateIndKPIsOnly();
 }
-function chParOk(cb){var r=findR(cb.dataset.k);if(!r)return;r.par_ok=cb.checked;debounceSave(r);}
+function chParOk(cb){var r=findR(cb.dataset.k);if(!r)return;r.par_ok=cb.checked;touchFields(r,['par_ok']);debounceSave(r);}
 function chParalegal(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r.paralegal=sel.value;
+  touchFields(r,['paralegal']);
   debounceSave(r);
 }
 function chRevSup(sel){
@@ -3158,9 +3184,10 @@ function chRevSup(sel){
     var cell=document.getElementById('frev_'+sel.dataset.k);
     if(cell)cell.textContent=r.frev;
   }
+  touchFields(r,['rev','frev']);
   debounceSave(r);
 }
-function chFldSup(el){var r=findR(el.dataset.k);if(!r)return;r[el.dataset.f]=el.value;debounceSave(r);}
+function chFldSup(el){var r=findR(el.dataset.k);if(!r)return;r[el.dataset.f]=el.value;touchFields(r,[el.dataset.f]);debounceSave(r);}
 
 // ── Clasificación por reglas (sin IA) ──
 var KW_AGENDA=[
@@ -3264,7 +3291,7 @@ function analizarSuprema(){
   rows.forEach(function(r){
     r.clasificacion=clasificarMovimiento(r);
     r.aiAnalizado=true;
-    r._rowTs=Date.now();
+    touchFields(r,['clasificacion','aiAnalizado']);
     cnt++;
   });
   status.textContent='✅ '+cnt+' registros clasificados';
@@ -3334,7 +3361,7 @@ function mergeSecSmartJS(old,newSec){
   if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
   newSec._avances=mergedAv;
   var oldRows=old.rows||[];
-  var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
+  var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
   if(incomingRows.length===0&&oldRows.length>0&&clearedTs<=oldSavedTs){
     // Cliente viejo/inactivo re-guardando su estado vacío por accidente -> se ignora
     newSec.rows=oldRows;
@@ -3343,28 +3370,39 @@ function mergeSecSmartJS(old,newSec){
     newSec.slotSaved=old.slotSaved||newSec.slotSaved;
     newSec._clearedAt=old._clearedAt||newSec._clearedAt;
   }else if(incomingRows.length>0&&oldRows.length>0){
-    // Ambos traen filas activas: por fila, gana la versión con _rowTs más
-    // reciente (en vez de "si el campo está vacío" — ese criterio trataba
-    // un checkbox desmarcado a propósito (false) como "vacío" y lo volvía
-    // a marcar con el valor viejo del servidor, que era el bug real).
+    // Ambos traen filas activas: se funde CAMPO POR CAMPO (no fila completa).
+    // Antes una sola marca de tiempo por fila decidía "quién gana" para TODOS
+    // los campos editables de esa fila. Eso era el bug real reportado: si Edu
+    // marcaba el checkbox de una fila y, casi al mismo tiempo, alguien más
+    // editaba la tipificación de ESA MISMA fila (un campo totalmente
+    // distinto), el guardado con el timestamp más nuevo se llevaba TODOS los
+    // campos — incluido el checkbox del otro, que quedaba revertido justo
+    // cuando llegaba el aviso de "sincronizado". Ahora cada campo compara su
+    // propia marca (_fieldTs[campo]) contra la del otro lado, de forma
+    // independiente — editar un campo ya no puede pisar otro campo distinto
+    // de la misma fila.
     var oldMap={};oldRows.forEach(function(r){oldMap[r.key]=r;});
     incomingRows.forEach(function(nr){
       var or=oldMap[nr.key];if(!or)return;
-      var nts=nr._rowTs||0,ots=or._rowTs||0;
-      if(ots>nts){
-        // El servidor tiene una edición más nueva de esta fila que la que
-        // yo tenía localmente cuando armé mi guardado -> se respeta la suya.
-        // ojo: or[f] puede ser undefined si esa fila vieja nunca tuvo este
-        // campo (ej. filas creadas antes de agregarse par_ok/paralegal).
-        // Firestore RECHAZA de inmediato cualquier documento con un valor
-        // undefined — eso tira abajo el guardado COMPLETO (todas las filas,
-        // no solo esta), y antes eso se traducía en "el checkbox se borra"
-        // sin ningún aviso. nullifyUndef() (ver fbSaveSec) limpia esto justo
-        // antes de escribir, como red de seguridad adicional.
-        EDIT_FIELDS.forEach(function(f){nr[f]=(or[f]===undefined)?nr[f]:or[f];});
-        nr._rowTs=ots;
-      }
-      // si nts>=ots, mi propia versión es igual o más nueva -> se queda tal cual
+      var nFts=nr._fieldTs||{},oFts=or._fieldTs||{};
+      var rowFallbackNts=nr._rowTs||0,rowFallbackOts=or._rowTs||0;
+      EDIT_FIELDS.forEach(function(f){
+        // Si a algún lado le falta _fieldTs para este campo específico (fila
+        // vieja de antes de este cambio), se usa el _rowTs de esa fila como
+        // respaldo, para no perder el comportamiento anterior en datos viejos.
+        var nts=(f in nFts)?nFts[f]:rowFallbackNts;
+        var ots=(f in oFts)?oFts[f]:rowFallbackOts;
+        if(ots>nts){
+          // ojo: or[f] puede ser undefined si esa fila vieja nunca tuvo este
+          // campo. Firestore RECHAZA de inmediato cualquier documento con un
+          // valor undefined — eso tira abajo el guardado COMPLETO. nullifyUndef()
+          // (ver fbSaveSec) limpia esto justo antes de escribir, como respaldo.
+          if(or[f]!==undefined)nr[f]=or[f];
+          nFts[f]=ots;
+        }
+      });
+      nr._fieldTs=nFts;
+      nr._rowTs=Math.max(rowFallbackNts,rowFallbackOts);
     });
   }
   return newSec;
@@ -3455,18 +3493,26 @@ function fbApplyIncoming(sec,gs){
       if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
     }
   }else if(gs.rows&&gs.rows.length>0){
-    // Igual criterio que en el servidor: por fila, gana quien tenga el
-    // _rowTs más reciente — así un check/uncheck deliberado nunca se
-    // revierte por un guardado de otro usuario con datos más viejos.
-    var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok'];
+    // Igual criterio que en el servidor (ver mergeSecSmartJS): fusión CAMPO
+    // POR CAMPO usando _fieldTs, no por fila completa — así editar un campo
+    // de una fila (ej. tipificación) ya no puede revertir un checkbox
+    // marcado a propósito en esa misma fila por otra persona.
+    var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
     var gsMap={};gs.rows.forEach(function(r){gsMap[r.key]=r;});
     localRows.forEach(function(lr){
       var gr=gsMap[lr.key];if(!gr)return;
-      var lts=lr._rowTs||0,gts=gr._rowTs||0;
-      if(gts>lts){
-        EDIT_FIELDS.forEach(function(f){lr[f]=gr[f];});
-        lr._rowTs=gts;
-      }
+      var lFts=lr._fieldTs||{},gFts=gr._fieldTs||{};
+      var rowFallbackLts=lr._rowTs||0,rowFallbackGts=gr._rowTs||0;
+      EDIT_FIELDS.forEach(function(f){
+        var lts=(f in lFts)?lFts[f]:rowFallbackLts;
+        var gts=(f in gFts)?gFts[f]:rowFallbackGts;
+        if(gts>lts){
+          if(gr[f]!==undefined)lr[f]=gr[f];
+          lFts[f]=gts;
+        }
+      });
+      lr._fieldTs=lFts;
+      lr._rowTs=Math.max(rowFallbackLts,rowFallbackGts);
     });
   }
 }
