@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-04-FB8</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-05-FB9</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -3320,6 +3320,26 @@ function goSubTab(sec,sub){
 // ============================================================
 function fbSecRef(sec){ return fbDb.collection(FB_COL).doc('sec_'+sec); }
 
+// Colapsa avances duplicados que comparten la misma fecha de calendario
+// (reliquia de cuando "id" se generaba con Date.now() en vez de ser
+// determinístico por día) en uno solo — se queda con el de mayor id, es
+// decir, el guardado más reciente de ese día. Se usa tanto al fusionar en
+// el servidor (mergeSecSmartJS) como al cargar datos ya existentes, para
+// que los duplicados viejos se autosanen en pantalla sin esperar a que
+// alguien guarde un avance nuevo.
+function dedupeAvancesByFecha(avs){
+  if(!avs||!avs.length)return avs||[];
+  var byFecha={};
+  avs.forEach(function(a){
+    if(!a)return;
+    var key=a.fecha;
+    if(!key){byFecha['__id_'+a.id]=a;return;}
+    if(!byFecha[key]||(a.id||0)>=(byFecha[key].id||0))byFecha[key]=a;
+  });
+  var out=Object.keys(byFecha).map(function(k){return byFecha[k];});
+  out.sort(function(a,b){return(a.id||0)-(b.id||0);});
+  return out;
+}
 function mergeSecSmartJS(old,newSec){
   if(!newSec)newSec={};
   if(!old)return newSec;
@@ -3355,7 +3375,8 @@ function mergeSecSmartJS(old,newSec){
   incomingAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
   var mergedAv=[];
   Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
-  mergedAv.sort(function(a,b){return(a.id||0)-(b.id||0);});
+  // Segunda pasada: colapsar por FECHA (no solo por id) — ver dedupeAvancesByFecha.
+  mergedAv=dedupeAvancesByFecha(mergedAv);
   // Mismo límite defensivo que hist: cada avance guarda una copia completa
   // de todas las filas. Se conservan los 60 más recientes.
   if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
@@ -3483,7 +3504,7 @@ function fbSaveAll(isReset){
 function fbApplyIncoming(sec,gs){
   if(!gs)return;
   if(gs.hist)SEC[sec].hist=Object.assign({},gs.hist,SEC[sec].hist);
-  if(gs._avances)SEC[sec]._avances=gs._avances;
+  if(gs._avances)SEC[sec]._avances=dedupeAvancesByFecha(gs._avances);
   var localRows=SEC[sec].rows||[];
   if(localRows.length===0){
     if(gs.rows&&gs.rows.length>0){
@@ -3770,7 +3791,7 @@ function lsLoad(){
       if(d.slotSaved)SEC[sec].slotSaved=d.slotSaved;
       if(d._clearedAt)SEC[sec]._clearedAt=d._clearedAt;
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
-      if(d._avances)SEC[sec]._avances=d._avances;
+      if(d._avances)SEC[sec]._avances=dedupeAvancesByFecha(d._avances);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
         if(!d._avance.id)d._avance.id=Date.now();
