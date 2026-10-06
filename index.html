@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB15</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB16</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -1803,16 +1803,21 @@ function buildArriboChart(rows){
     '<div style="display:flex;gap:4px">'+modes.map(function(m){
       return'<button onclick="arrSetMode(\''+m.k+'\')" style="padding:4px 12px;border-radius:7px;border:1px solid '+(mode===m.k?'#1BC5BD':'var(--border)')+';background:'+(mode===m.k?'#1BC5BD':'#fff')+';color:'+(mode===m.k?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+m.l+'</button>';
     }).join('')+'</div></div>';
-  var map={},lab={},srt={};
+  var map={},lab={},srt={},rem={},remTot={};
   rows.forEach(function(r){
     var d=parseDate(r.fc2);if(!d)return;
     if(lo&&d<lo)return;if(hi&&d>hi)return;
     var p=_tifPeriodOf(r.fc2,mode);
+    var l=refLabel(r.referencia);
     map[p.key]=(map[p.key]||0)+1;lab[p.key]=p.label;srt[p.key]=p.sortDate;
+    rem[p.key]=rem[p.key]||{};rem[p.key][l]=(rem[p.key][l]||0)+1;remTot[l]=(remTot[l]||0)+1;
   });
   var keys=Object.keys(map).sort(function(a,b){return srt[a]-srt[b];});
   var box='<div style="margin-bottom:18px">'+head;
   if(!keys.length)return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin notificaciones en el rango elegido</div></div>';
+  var rems=Object.keys(remTot).sort(function(a,b){return remTot[b]-remTot[a];});
+  var pal=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#4a5568'];
+  var col={};rems.forEach(function(l,i){col[l]=pal[i%pal.length];});
   var max=0,total=0;keys.forEach(function(k){if(map[k]>max)max=map[k];total+=map[k];});
   var W=Math.max(560,keys.length*70+80),H=260,padL=40,padB=44,padT=22,padR=14;
   var cw=W-padL-padR,ch=H-padT-padB,step=cw/keys.length,bw=Math.min(46,step*0.6);
@@ -1822,13 +1827,28 @@ function buildArriboChart(rows){
     svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#eef1f5"/><text x="'+(padL-8)+'" y="'+(y+3)+'" font-size="9" fill="#8a96a3" text-anchor="end">'+Math.round(max*g/4)+'</text>';
   }
   keys.forEach(function(k,i){
-    var x=padL+step*i+(step-bw)/2,h=max?map[k]/max*ch:0;
-    svg+='<rect x="'+x+'" y="'+(padT+ch-h)+'" width="'+bw+'" height="'+h+'" rx="3" fill="#1BC5BD"><title>'+esc(lab[k])+': '+map[k]+'</title></rect>'+
-      '<text x="'+(x+bw/2)+'" y="'+(padT+ch-h-5)+'" font-size="10" font-weight="700" fill="#042433" text-anchor="middle">'+map[k]+'</text>'+
+    var x=padL+step*i+(step-bw)/2,acc=0;
+    rems.forEach(function(l){
+      var n=(rem[k]&&rem[k][l])||0;if(!n)return;
+      var h=max?n/max*ch:0;acc+=h;
+      svg+='<rect x="'+x+'" y="'+(padT+ch-acc)+'" width="'+bw+'" height="'+h+'" fill="'+col[l]+'"><title>'+esc(lab[k])+' · '+esc(l)+': '+n+'</title></rect>';
+    });
+    svg+='<text x="'+(x+bw/2)+'" y="'+(padT+ch-acc-5)+'" font-size="10" font-weight="700" fill="#042433" text-anchor="middle">'+map[k]+'</text>'+
       '<text x="'+(x+bw/2)+'" y="'+(padT+ch+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(lab[k])+'</text>';
   });
   svg+='</svg>';
-  return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+svg+
+  var legend='<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px;font-size:11px;color:#464E5F">'+rems.map(function(l){
+    return'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:'+col[l]+'"></span>'+esc(l)+' <b style="color:#042433">'+remTot[l]+'</b></span>';
+  }).join('')+'</div>';
+  // Desglose por periodo: "29/09/2026 — 96 notificaciones · 50 Casilla 108030 · 40 Casilla 1692"
+  var det='<div style="margin-top:10px;padding-top:8px;border-top:1px solid #eef1f5;display:flex;flex-direction:column;gap:6px">'+keys.map(function(k){
+    return'<div style="font-size:12px;color:#464E5F;display:flex;flex-wrap:wrap;align-items:center;gap:6px"><b style="color:#042433;min-width:96px">'+esc(lab[k])+'</b>'+
+      '<span style="font-weight:700;color:#042433">'+map[k]+' notificaciones</span>'+
+      rems.filter(function(l){return rem[k]&&rem[k][l];}).map(function(l){
+        return'<span style="background:#f4f6f9;border-left:3px solid '+col[l]+';padding:2px 8px;border-radius:5px"><b style="color:#042433">'+rem[k][l]+'</b> '+esc(l)+'</span>';
+      }).join('')+'</div>';
+  }).join('')+'</div>';
+  return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+legend+svg+det+
     '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f5;font-size:11px;color:var(--muted)">Total en el rango: <b style="color:#042433">'+total+'</b> notificaciones</div></div></div>';
 }
 var _remDesde='',_remHasta='';
@@ -2326,7 +2346,6 @@ function renderInd(){
 
     // ── Gráfico: notificaciones recibidas (día / semana / mes / año), con sus propias fechas ──
     notifH+=buildArriboChart(notifFull);
-    notifH+=buildRemitenteChart(notifFull);
 
     // ── Resumen: Tipificación x Revisor ──
     var tifMap={};
@@ -3038,39 +3057,26 @@ function chVal50(sel){
 function btnGuardarAvance(){
   if(!SEC.notif.rows.length){toast('No hay datos para guardar','warn');return;}
   var rows=SEC.notif.rows;
-  var total=rows.length;
-  var valOk=rows.filter(function(r){return r.val_ok;}).length;
-  var pct=total?Math.round(valOk/total*100):0;
-  // Get fecha from notif Excel (fc2 of first row)
-  var fechaNotif=rows.length>0?(fechasDe(rows).join(' + ')||todayStr()):todayStr();
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-  // Un solo avance guardado por día de calendario: si ya existe uno con la
-  // fecha de hoy, se actualiza en el mismo lugar (mismo id) en vez de crear
-  // uno nuevo — así "Guardar avance" varias veces el mismo día no duplica.
-  SEC.notif._avances=SEC.notif._avances||[];
   var hoy=todayStr();
-  // id determinístico por día (YYYYMMDD) — así, si Claudia y Edu guardan
-  // avance el mismo día desde pantallas distintas, el servidor los fusiona
-  // en el MISMO registro (mergeSecSmartJS hace merge por id), no en dos.
-  var hoyParts=hoy.split('/');
-  var dayId=Number(hoyParts[2]+hoyParts[1]+hoyParts[0]);
-  var existing=SEC.notif._avances.find(function(a){return a.id===dayId||a.fecha===hoy;});
-  var avPayload={
-    id:dayId,
-    ts:Date.now(),
-    fecha:hoy,
-    fechaNotif:fechaNotif,
-    hora:hora,
-    pct:pct,valOk:valOk,total:total,
-    rows:JSON.parse(JSON.stringify(rows)),
+  SEC.notif._avances=SEC.notif._avances||[];
+  // UN avance por cada fecha de notificación (29/09 y 30/09 ya no se mezclan).
+  // Id determinístico por fecha de notificación: guardar de nuevo el mismo día
+  // de datos actualiza ese avance en vez de duplicarlo, y dos personas que
+  // guardan la misma fecha lo fusionan en el mismo registro en el servidor.
+  var dias=fechasDe(rows);
+  var total=rows.length,valOk=rows.filter(function(r){return r.val_ok;}).length;
+  var pct=total?Math.round(valOk/total*100):0;
+  var baseAv={ts:Date.now(),fecha:hoy,hora:hora,
     slotLoaded:JSON.parse(JSON.stringify(SEC.notif.slotLoaded)),
-    slotData:JSON.parse(JSON.stringify(SEC.notif.slotData))
-  };
-  if(existing){
-    SEC.notif._avances[SEC.notif._avances.indexOf(existing)]=avPayload;
-  }else{
-    SEC.notif._avances.push(avPayload);
-  }
+    slotData:JSON.parse(JSON.stringify(SEC.notif.slotData))};
+  dias.forEach(function(d){
+    var rs=JSON.parse(JSON.stringify(rows.filter(function(r){return fechaDiaR(r)===d;})));
+    var avPayload=mkAvDia(baseAv,d,rs);
+    var ix=-1;
+    SEC.notif._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
+    if(ix>=0)SEC.notif._avances[ix]=avPayload;else SEC.notif._avances.push(avPayload);
+  });
   updateAvancePill();
   // Clear view to allow new reports
   SEC.notif.rows=[];
@@ -3095,7 +3101,7 @@ function btnGuardarAvance(){
     var l=document.getElementById('lbl-'+s);if(l)l.classList.remove('loaded');
     var t=document.getElementById('lbl-'+s+'-txt');if(t)t.textContent=SLOT_BASE[s];
   });
-  toast('✅ Avance guardado — '+pct+'% completado. Puedes cargar nuevos reportes.','ok');
+  toast('✅ Avance guardado'+(dias.length>1?' en '+dias.length+' fechas separadas ('+dias.join(', ')+')':'')+' — '+pct+'% completado. Puedes cargar nuevos reportes.','ok');
 }
 function btnRetomarAvance(id){
   var avs=SEC.notif._avances||[];
@@ -3494,7 +3500,9 @@ function dedupeAvancesByFecha(avs){
   var byFecha={};
   avs.forEach(function(a){
     if(!a)return;
-    var key=a.fecha;
+    // se agrupa por fecha de NOTIFICACION del avance (fechaNotif); si no la
+    // tiene, por la fecha en que se guardó (avances antiguos)
+    var key=a.fechaNotif||a.fecha;
     if(!key){byFecha['__id_'+a.id]=a;return;}
     if(!byFecha[key]||(a.id||0)>=(byFecha[key].id||0))byFecha[key]=a;
   });
@@ -3502,12 +3510,31 @@ function dedupeAvancesByFecha(avs){
   out.sort(function(a,b){return(a.id||0)-(b.id||0);});
   return out;
 }
-// ── Membresía de filas: nunca se pierden por un cliente desactualizado ──
-// Claves de filas ya ARCHIVADAS (en un avance guardado vigente o en una
-// jornada cerrada). Una fila archivada no puede volver a ser "activa" por
-// culpa de un navegador que todavía la tenía de antes.
-// _avDel = lápidas {idAvance: ts}: avances que se RETOMARON (volvieron a ser
-// activos). Un avance solo vale si su ts es mayor que su lápida.
+// Id de un avance de UN día de notificación: YYYYMMDD*10+1 (9 dígitos, no choca
+// con los ids antiguos de 8 dígitos que eran la fecha de guardado).
+function avIdDia(d){return fechaSortKey(d)*10+1;}
+function mkAvDia(base,d,rs){
+  var valOk=rs.filter(function(r){return r.val_ok;}).length;
+  var sd={};
+  Object.keys(base.slotData||{}).forEach(function(k){
+    var arr=base.slotData[k];sd[k]=Array.isArray(arr)?arr.filter(function(r){return fechaDiaR(r)===d;}):arr;
+  });
+  return {id:avIdDia(d),ts:base.ts||Date.now(),fecha:base.fecha,fechaNotif:d,hora:base.hora,
+    pct:rs.length?Math.round(valOk/rs.length*100):0,valOk:valOk,total:rs.length,rows:rs,
+    slotLoaded:base.slotLoaded,slotData:sd};
+}
+// Parte en un avance por fecha cualquier avance que mezcle varias fechas de notificación
+function splitAvancesPorFecha(avs){
+  var out=[];
+  (avs||[]).forEach(function(a){
+    if(!a||!a.rows){out.push(a);return;}
+    var ds=fechasDe(a.rows);
+    if(ds.length<=1){out.push(a);return;}
+    ds.forEach(function(d){out.push(mkAvDia(a,d,a.rows.filter(function(r){return fechaDiaR(r)===d;})));});
+  });
+  return out;
+}
+function normAvances(avs,tomb){return avValidos(dedupeAvancesByFecha(splitAvancesPorFecha(avs)),tomb);}
 function secArchivedKeys(doc){
   var set={};if(!doc)return set;
   var tomb=doc._avDel||{};
@@ -3570,7 +3597,7 @@ function mergeSecSmartJS(old,newSec){
   var mergedAv=[];
   Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
   // Segunda pasada: colapsar por FECHA (no solo por id) — ver dedupeAvancesByFecha.
-  mergedAv=dedupeAvancesByFecha(mergedAv);
+  mergedAv=normAvances(mergedAv,tombAll);
   // Mismo límite defensivo que hist: cada avance guarda una copia completa
   // de todas las filas. Se conservan los 60 más recientes.
   if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
@@ -3719,7 +3746,7 @@ function fbApplyIncoming(sec,gs){
   var avById={};
   avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
   avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
-  Sx._avances=dedupeAvancesByFecha(Object.keys(avById).map(function(k){return avById[k];}));
+  Sx._avances=normAvances(Object.keys(avById).map(function(k){return avById[k];}),Sx._avDel);
   var archived=secArchivedKeys({_avances:Sx._avances,_avDel:Sx._avDel,hist:Sx.hist});
   var localRows=Sx.rows||[];
   // Si el servidor ya archivó/cerró filas que yo todavía tenía activas (otro
@@ -4028,7 +4055,7 @@ function lsLoad(){
       if(d._clearedAt)SEC[sec]._clearedAt=d._clearedAt;
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
       if(d._avDel)SEC[sec]._avDel=d._avDel;
-      if(d._avances)SEC[sec]._avances=dedupeAvancesByFecha(d._avances);
+      if(d._avances)SEC[sec]._avances=normAvances(d._avances,d._avDel);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
         if(!d._avance.id)d._avance.id=Date.now();
