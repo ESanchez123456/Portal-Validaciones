@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB10</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB11</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -372,6 +372,7 @@ tr:hover td{background:#f7faff}
         <th style="min-width:120px">Supervisor<br><input class="th-filter" data-col="sup" oninput="colFilterN(this)" onclick="event.stopPropagation()" placeholder="Filtrar..."></th>
         <th style="min-width:160px">Contraparte<br><input class="th-filter" data-col="contraparte" oninput="colFilterN(this)" onclick="event.stopPropagation()" placeholder="Filtrar..."></th>
         <th style="min-width:140px">Materia<br><input class="th-filter" data-col="materia" oninput="colFilterN(this)" onclick="event.stopPropagation()" placeholder="Filtrar..."></th>
+        <th style="min-width:130px">Remitente<br><input class="th-filter" data-col="referencia" oninput="colFilterN(this)" onclick="event.stopPropagation()" placeholder="Código..."></th>
         <th style="min-width:180px">✅ Validado por<br>
           <select class="th-filter" style="width:100%;padding:4px 6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:4px;color:#fff;font-size:10.5px;font-family:inherit;margin-top:4px;-webkit-appearance:auto" onchange="filterValCol(this)" onclick="event.stopPropagation()">
             <option value="">Todos</option>
@@ -1164,7 +1165,7 @@ function renderNotifTable(){
   var rows=getNotifRows();
   var S=SEC.notif;
   if(!rows.length){
-    tb.innerHTML='<tr class="empty"><td colspan="24">Sin registros. Carga un archivo Excel para comenzar.</td></tr>';
+    tb.innerHTML='<tr class="empty"><td colspan="25">Sin registros. Carga un archivo Excel para comenzar.</td></tr>';
     return;
   }
   var h='';
@@ -1743,7 +1744,8 @@ function buildTifChart(rows){
   return wrap+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+svg+legend+'</div></div>';
 }
 // ── Filtro del panel operativo (por defecto: último día con registros) ──
-var _nfDesde='',_nfHasta='';
+var _nfDesde='',_nfHasta='',_nfRem='';
+function nfSetRem(v){_nfRem=v;renderInd();}
 function _isoToDate(s){var p=String(s).split('-');return new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));}
 function nfSetRange(d,h){if(d!==null)_nfDesde=d;if(h!==null)_nfHasta=h;renderInd();}
 
@@ -1791,6 +1793,35 @@ function buildArriboChart(rows){
   svg+='</svg>';
   return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+svg+
     '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f5;font-size:11px;color:var(--muted)">Total en el rango: <b style="color:#042433">'+total+'</b> notificaciones</div></div></div>';
+}
+var _remDesde='',_remHasta='';
+function remSetRange(d,h){if(d!==null)_remDesde=d;if(h!==null)_remHasta=h;renderInd();}
+function buildRemitenteChart(rows){
+  var lo=_remDesde?_isoToDate(_remDesde):null,hi=_remHasta?_isoToDate(_remHasta):null;
+  var inp='padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit';
+  var h='<div style="margin-bottom:18px"><div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px">'+
+    '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📬 Notificaciones por remitente</div>'+
+    '<span style="margin-left:auto;font-size:11.5px;color:var(--muted)">Desde</span><input type="date" value="'+(_remDesde||'')+'" onchange="remSetRange(this.value,null)" style="'+inp+'">'+
+    '<span style="font-size:11.5px;color:var(--muted)">Hasta</span><input type="date" value="'+(_remHasta||'')+'" onchange="remSetRange(null,this.value)" style="'+inp+'">'+
+    '<button onclick="remSetRange(\'\',\'\')" title="Quitar fechas" style="padding:4px 9px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;font-family:inherit">✕</button></div>';
+  var map={},total=0;
+  rows.forEach(function(r){
+    var d=parseDate(r.fc2);if(!d)return;
+    if(lo&&d<lo)return;if(hi&&d>hi)return;
+    var l=refLabel(r.referencia);map[l]=(map[l]||0)+1;total++;
+  });
+  var keys=Object.keys(map).sort(function(a,b){return map[b]-map[a];});
+  if(!keys.length)return h+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin notificaciones en el rango elegido</div></div>';
+  var pal=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239'];
+  h+='<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">';
+  keys.forEach(function(k,i){
+    var pct=Math.round(map[k]/total*100);
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px">'+
+      '<span style="width:150px;flex-shrink:0;color:#464E5F">'+esc(k)+'</span>'+
+      '<div style="flex:1;height:18px;background:#eef1f5;border-radius:5px"><div style="height:100%;border-radius:5px;background:'+pal[i%pal.length]+';width:'+Math.max(pct,2)+'%"></div></div>'+
+      '<span style="width:90px;text-align:right;font-weight:700;color:#042433">'+map[k]+' <span style="font-weight:500;color:var(--muted)">('+pct+'%)</span></span></div>';
+  });
+  return h+'<div style="margin-top:6px;padding-top:8px;border-top:1px solid #eef1f5;font-size:11px;color:var(--muted)">Total en el rango: <b style="color:#042433">'+total+'</b></div></div></div>';
 }
 function renderInd(){
   // Build records by section — activos + histórico cerrado (sin duplicar)
@@ -2026,7 +2057,9 @@ function renderInd(){
     if(_nfLo&&d<_nfLo)return false;
     if(_nfHi&&d>_nfHi)return false;
     return true;
-  });
+  }).filter(function(r){return !_nfRem||refLabel(r.referencia)===_nfRem;});
+  var _remOpts=[];notifFull.forEach(function(r){var l=refLabel(r.referencia);if(_remOpts.indexOf(l)<0)_remOpts.push(l);});
+  _remOpts.sort();
   var _rangoLbl=_modoUltimo
     ?(_maxD?'Último día con registros: <b>'+pad(_maxD.getDate())+'/'+pad(_maxD.getMonth()+1)+'/'+_maxD.getFullYear()+'</b>':'')
     :'Rango elegido';
@@ -2062,7 +2095,8 @@ function renderInd(){
     '</div>';
     notifH+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;font-size:11.5px;color:var(--muted)">'+
       '<span>'+_rangoLbl+'</span>'+
-      '<span style="margin-left:auto">Desde</span><input type="date" value="'+(_nfDesde||'')+'" onchange="nfSetRange(this.value,null)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit">'+
+      '<span style="margin-left:auto">Remitente</span><select onchange="nfSetRem(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit"><option value="">Todos</option>'+_remOpts.map(function(o){return'<option value="'+esc(o)+'"'+(o===_nfRem?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>'+
+      '<span>Desde</span><input type="date" value="'+(_nfDesde||'')+'" onchange="nfSetRange(this.value,null)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit">'+
       '<span>Hasta</span><input type="date" value="'+(_nfHasta||'')+'" onchange="nfSetRange(null,this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit">'+
       '<button onclick="nfSetRange(\'\',\'\')" style="padding:4px 10px;border-radius:7px;border:1px solid '+(_modoUltimo?'#1BC5BD':'var(--border)')+';background:'+(_modoUltimo?'#1BC5BD':'#fff')+';color:'+(_modoUltimo?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Último día</button>'+
     '</div>';
@@ -2251,6 +2285,7 @@ function renderInd(){
 
     // ── Gráfico: notificaciones recibidas (día / semana / mes / año), con sus propias fechas ──
     notifH+=buildArriboChart(notifFull);
+    notifH+=buildRemitenteChart(notifFull);
 
     // ── Resumen: Tipificación x Revisor ──
     var tifMap={};
@@ -2704,6 +2739,7 @@ function buildRow(r,S){
     '<td>'+esc(r.sup)+'</td>'+
     '<td style="max-width:160px;white-space:normal;word-break:break-word">'+esc(r.contraparte||'')+'</td>'+
     '<td style="max-width:140px;white-space:normal;word-break:break-word">'+esc(r.materia||'')+'</td>'+
+    (r.section==='notif'?'<td style="white-space:nowrap;font-size:11px">'+esc(refLabel(r.referencia))+'</td>':'')+
     (r.section==='notif'?'':'<td><span style="font-size:11px;padding:2px 7px;border-radius:10px;background:'+(r.relevancia==='SENSIBLE'?'#fed7d7':'#edf2f7')+';color:'+(r.relevancia==='SENSIBLE'?'#742a2a':'#718096')+'">'+esc(r.relevancia||'—')+'</span></td>')+
     (r.section==='notif'?'':'<td style="max-width:200px;white-space:normal;word-break:break-word;font-size:11px">'+esc(r.bitacora||'')+'</td>')+
     (r.section==='notif'?'':'<td><select class="ssel" style="background:'+e.bg+';color:'+e.fg+';border:1px solid '+e.bd+';min-width:120px" data-k="'+k+'" onchange="chEst(this)">'+eopts+'</select></td>')+
@@ -2751,6 +2787,17 @@ function buildRow(r,S){
     '<td><input class="icel" data-k="'+k+'" data-f="ov" value="'+esc(r.ov)+'" onchange="chFld(this)" placeholder="—"></td>'+
     (r.section==='notif'?'<td>'+buildIdentSel(k,r.ident)+'</td>':'')+
   '</tr>';
+}
+// Remitente / procedencia de la resolución (campo REFERENCIA del reporte).
+// Para renombrar un código basta editar REF_ETIQUETAS.
+var REF_ETIQUETAS={'108030':'Casilla 108030','1692':'Casilla 1692'};
+function refLabel(v){
+  v=String(v==null?'':v).trim();
+  if(!v)return 'Sin referencia';
+  if(REF_ETIQUETAS[v])return REF_ETIQUETAS[v];
+  if(/^tc$/i.test(v)||/casilla\s*tc/i.test(v))return 'Casilla TC';
+  if(/f[ií]sic/i.test(v))return 'Notificación física';
+  return v;
 }
 // Quién identificó el error (lista fija del equipo)
 var IDENT_OPCIONES=[['Claudia Vasquez','Claudia'],['Nestor Rossell','Néstor'],['Jemima Gonzales','Jemima'],['Jose Gutierrez','José'],['Edu Sanchez','Edu']];
@@ -3688,12 +3735,12 @@ function exportOmisionesExcel(){
   var rows=window._lastOmisionesRows||[];
   if(!rows.length){toast('No hay omisiones para exportar','warn');return;}
   var wb=XLSX.utils.book_new();
-  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Revisor','Identificó el error']];
+  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Revisor','Identificó el error','Remitente']];
   rows.forEach(function(r){
-    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',r.val50||'',identCorto(r.ident)]);
+    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',r.val50||'',identCorto(r.ident),refLabel(r.referencia)]);
   });
   var ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16},{wch:18}];
+  ws['!cols']=[{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16},{wch:18},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Omisiones');
   XLSX.writeFile(wb,'detalle_omisiones_'+todayStr().replace(/\//g,'-')+'.xlsx');
   toast('📥 Exportado correctamente','ok');
