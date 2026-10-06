@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB16</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB17</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -776,12 +776,6 @@ function processFile(file,tipo,slotId,sec){
       }
       else if(sec==='sup')nuevos=normSup(data,slotId);
       else nuevos=tipo==='T'?normT(data,slotId):normN(data,slotId);
-      if(sec==='notif'){
-        var _dNew=fechasDe(nuevos),_dEx=fechasDe(S.rows.filter(function(r){return r.slot!==slotId;}));
-        if(_dNew.length&&_dEx.length&&_dNew.some(function(d){return _dEx.indexOf(d)<0;})){
-          if(!confirm('Estás cargando notificaciones del '+_dNew.join(' y ')+' pero ya hay datos activos del '+_dEx.join(' y ')+'.\n\nSi continúas se mostrarán juntos en la tabla (los indicadores sí los separan por fecha).\nLo recomendado es "Guardar avance" primero.\n\n¿Cargar de todas formas?'))return;
-        }
-      }
       S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
@@ -804,8 +798,10 @@ function processFile(file,tipo,slotId,sec){
           return 0;
         });
       }
+      var _sepMsg='';
+      if(sec==='notif'&&separarDiasActivos()){_sepMsg=' · los días anteriores pasaron a "Avances guardados" (separados por fecha)';lsSave();updateAvancePill();}
       refreshSec(sec);renderWF(sec);
-      toast('✅ '+ag+' cargados'+(dup?', '+dup+' duplicados omitidos':''));
+      toast('✅ '+ag+' cargados'+(dup?', '+dup+' duplicados omitidos':'')+_sepMsg);
     }catch(err){toast('Error: '+err.message,'err');}
   };
   rd.readAsArrayBuffer(file);
@@ -3534,6 +3530,40 @@ function splitAvancesPorFecha(avs){
   });
   return out;
 }
+// Separa los días mezclados en las filas ACTIVAS: se queda activo el día más
+// reciente y cada día anterior pasa a su propio avance guardado (retomable).
+// Si ya existía un avance de esa fecha, se fusiona fila por fila (se conserva
+// la fila con edición más reciente) para no perder validaciones.
+var _sepBusy=false;
+function separarDiasActivos(){
+  if(_sepBusy)return false;
+  var S=SEC.notif,rows=S.rows||[],ds=fechasDe(rows);
+  if(ds.length<2)return false;
+  _sepBusy=true;
+  try{
+    var keep=ds[ds.length-1];
+    var base={ts:Date.now(),fecha:todayStr(),hora:new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}),
+      slotLoaded:JSON.parse(JSON.stringify(S.slotLoaded||{})),slotData:JSON.parse(JSON.stringify(S.slotData||{}))};
+    S._avances=S._avances||[];
+    ds.slice(0,-1).forEach(function(d){
+      var rs=JSON.parse(JSON.stringify(rows.filter(function(r){return fechaDiaR(r)===d;})));
+      var ix=-1;S._avances.forEach(function(x,i){if(x&&((x.fechaNotif||x.fecha)===d||x.id===avIdDia(d)))ix=i;});
+      if(ix>=0){
+        var byKey={};(S._avances[ix].rows||[]).forEach(function(r){byKey[r.key]=r;});
+        rs.forEach(function(r){var o=byKey[r.key];if(!o||(r._rowTs||0)>(o._rowTs||0))byKey[r.key]=r;});
+        rs=Object.keys(byKey).map(function(k){return byKey[k];});
+      }
+      var av=mkAvDia(base,d,rs);
+      if(ix>=0)S._avances[ix]=av;else S._avances.push(av);
+    });
+    S.rows=rows.filter(function(r){return fechaDiaR(r)===keep;});
+    (S.slots||[]).forEach(function(sl){
+      if(!S.rows.some(function(r){return r.slot===sl;})){S.slotLoaded[sl]=false;S.slotSaved[sl]=false;S.slotData[sl]=[];}
+      else if(Array.isArray(S.slotData[sl]))S.slotData[sl]=S.slotData[sl].filter(function(r){return fechaDiaR(r)===keep;});
+    });
+    return true;
+  }finally{_sepBusy=false;}
+}
 function normAvances(avs,tomb){return avValidos(dedupeAvancesByFecha(splitAvancesPorFecha(avs)),tomb);}
 function secArchivedKeys(doc){
   var set={};if(!doc)return set;
@@ -3799,6 +3829,9 @@ function fbApplyIncoming(sec,gs){
     });
     Sx.rows=localRows;
   }
+  // Si llegaron filas de varios días mezcladas (datos viejos o de otro usuario),
+  // se separan: el día más reciente queda activo y los anteriores pasan a avances.
+  if(sec==='notif'&&separarDiasActivos())setTimeout(lsSave,0);
 }
 function fbApplyUpdate(silent){
   var banner=document.getElementById('gs-update-banner');
