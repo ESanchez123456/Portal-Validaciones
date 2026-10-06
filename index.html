@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB14</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB15</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -693,6 +693,15 @@ function getRespParalegal(resp){
 
 function pad(n){return String(n).padStart(2,'0');}
 function now(){var d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+// Día (DD/MM/AAAA) de una fila de notificaciones, a partir de su fecha de notificación
+function fechaDiaR(r){return String((r&&r.fc2)||'').substring(0,10)||'Sin fecha';}
+function fechaSortKey(d){var m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(d||'');return m?Number(m[3]+m[2]+m[1]):99999999;}
+// Fechas distintas presentes en un conjunto de filas, ordenadas cronológicamente
+function fechasDe(rows){
+  var seen={},out=[];
+  (rows||[]).forEach(function(r){var d=fechaDiaR(r);if(!seen[d]){seen[d]=1;out.push(d);}});
+  return out.sort(function(a,b){return fechaSortKey(a)-fechaSortKey(b);});
+}
 function todayStr(){var d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();}
 function shortDate(){var d=new Date();return pad(d.getDate())+'.'+pad(d.getMonth()+1);}
 function gf(r){for(var i=1;i<arguments.length;i++){var v=r[arguments[i]];if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;}return '';}
@@ -767,6 +776,12 @@ function processFile(file,tipo,slotId,sec){
       }
       else if(sec==='sup')nuevos=normSup(data,slotId);
       else nuevos=tipo==='T'?normT(data,slotId):normN(data,slotId);
+      if(sec==='notif'){
+        var _dNew=fechasDe(nuevos),_dEx=fechasDe(S.rows.filter(function(r){return r.slot!==slotId;}));
+        if(_dNew.length&&_dEx.length&&_dNew.some(function(d){return _dEx.indexOf(d)<0;})){
+          if(!confirm('Estás cargando notificaciones del '+_dNew.join(' y ')+' pero ya hay datos activos del '+_dEx.join(' y ')+'.\n\nSi continúas se mostrarán juntos en la tabla (los indicadores sí los separan por fecha).\nLo recomendado es "Guardar avance" primero.\n\n¿Cargar de todas formas?'))return;
+        }
+      }
       S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
@@ -2171,19 +2186,22 @@ function renderInd(){
     });
     // From active rows (current jornada en curso, aún no guardada ni cerrada)
     var activeRows=SEC.notif.rows||[];
-    if(activeRows.length>0){
-      var activeKey='(Jornada activa)';
-      jornadaMap[activeKey]={date:activeKey,hora:'activa',total:0,slot:{N1n:0,N2n:0,N3n:0},
+    // Una fila "EN CURSO" por cada fecha de notificación presente en las filas
+    // activas (antes todo se juntaba en una sola "(Jornada activa)" y el 29/09
+    // se mezclaba con el 30/09 si se cargaban sin Guardar avance entre medio).
+    activeRows.forEach(function(r){
+      var dia=fechaDiaR(r);
+      var activeKey='(activa) '+dia;
+      if(!jornadaMap[activeKey])jornadaMap[activeKey]={date:dia,sk:fechaSortKey(dia),hora:'activa',total:0,slot:{N1n:0,N2n:0,N3n:0},
         valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:false,status:'activa'};
-      activeRows.forEach(function(r){
-        jornadaMap[activeKey].total++;
-        if(r.slot)jornadaMap[activeKey].slot[r.slot]=(jornadaMap[activeKey].slot[r.slot]||0)+1;
-        if(r.val_ok)jornadaMap[activeKey].valOk++;
-        if(r.val50==='Jemima Gonzales'){jornadaMap[activeKey].jemimaT++;if(r.jemima_ok)jornadaMap[activeKey].jemimaOk++;}
-        if(r.val50==='Nestor Rossell'){jornadaMap[activeKey].nestorT++;if(r.nestor_ok)jornadaMap[activeKey].nestorOk++;}
-        if(r.val50==='Jose Gutierrez'){jornadaMap[activeKey].joseT++;if(r.jose_ok)jornadaMap[activeKey].joseOk++;}
-      });
-    }
+      var J=jornadaMap[activeKey];
+      J.total++;
+      if(r.slot)J.slot[r.slot]=(J.slot[r.slot]||0)+1;
+      if(r.val_ok)J.valOk++;
+      if(r.val50==='Jemima Gonzales'){J.jemimaT++;if(r.jemima_ok)J.jemimaOk++;}
+      if(r.val50==='Nestor Rossell'){J.nestorT++;if(r.nestor_ok)J.nestorOk++;}
+      if(r.val50==='Jose Gutierrez'){J.joseT++;if(r.jose_ok)J.joseOk++;}
+    });
     // One row per saved-but-not-retomado avance (Guardar avance), each its own day
     (SEC.notif._avances||[]).forEach(function(av){
       var key='av-'+av.id;
@@ -2204,6 +2222,7 @@ function renderInd(){
       var oa=_statusOrder[a.status!==undefined?a.status:(a.cerrada?'cerrada':'activa')];
       var ob=_statusOrder[b.status!==undefined?b.status:(b.cerrada?'cerrada':'activa')];
       if(oa!==ob)return oa-ob;
+      if(a.sk!==undefined&&b.sk!==undefined)return a.sk-b.sk;
       return a.date.localeCompare(b.date);
     });
 
@@ -3023,7 +3042,7 @@ function btnGuardarAvance(){
   var valOk=rows.filter(function(r){return r.val_ok;}).length;
   var pct=total?Math.round(valOk/total*100):0;
   // Get fecha from notif Excel (fc2 of first row)
-  var fechaNotif=rows.length>0?(rows[0].fc2||todayStr()):todayStr();
+  var fechaNotif=rows.length>0?(fechasDe(rows).join(' + ')||todayStr()):todayStr();
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
   // Un solo avance guardado por día de calendario: si ya existe uno con la
   // fecha de hoy, se actualiza en el mismo lugar (mismo id) en vez de crear
@@ -3159,7 +3178,7 @@ function updateAvancePill(){
     var nestorT=rows.filter(function(r){return r.val50==='Nestor Rossell';}).length;
     var pctVal=total?Math.round(valOk/total*100):0;
     if(lblEl)lblEl.textContent='📊 Avance en curso';
-    if(fechaEl)fechaEl.textContent=(rows[0]&&rows[0].fc2)||todayStr();
+    if(fechaEl){var _fd=fechasDe(rows);fechaEl.textContent=_fd.length?_fd.join(' + '):todayStr();}
     if(barEl)barEl.style.width=pctVal+'%';
     if(pctEl)pctEl.innerHTML=
       '<span style="margin-right:8px">Edu/Claudia: '+valOk+'/'+total+' ('+pctVal+'%)</span>'+
