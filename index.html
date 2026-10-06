@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB12</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB13</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -3014,6 +3014,7 @@ function btnGuardarAvance(){
   var existing=SEC.notif._avances.find(function(a){return a.id===dayId||a.fecha===hoy;});
   var avPayload={
     id:dayId,
+    ts:Date.now(),
     fecha:hoy,
     fechaNotif:fechaNotif,
     hora:hora,
@@ -3073,6 +3074,9 @@ function btnRetomarAvance(id){
   if(av.slotLoaded)SEC.notif.slotLoaded=JSON.parse(JSON.stringify(av.slotLoaded));
   if(av.slotData)SEC.notif.slotData=JSON.parse(JSON.stringify(av.slotData));
   avs.splice(idx,1);
+  // Lápida: avisa al servidor y a los demás que este avance ya volvió a ser activo
+  SEC.notif._avDel=SEC.notif._avDel||{};
+  SEC.notif._avDel[av.id]=Date.now();
   SEC.notif._clearedAt=0;
   lsSave();
   refreshSec('notif');renderWF('notif');renderNotifTable();updateAvancePill();restoreSlotUI();
@@ -3455,6 +3459,35 @@ function dedupeAvancesByFecha(avs){
   out.sort(function(a,b){return(a.id||0)-(b.id||0);});
   return out;
 }
+// ── Membresía de filas: nunca se pierden por un cliente desactualizado ──
+// Claves de filas ya ARCHIVADAS (en un avance guardado vigente o en una
+// jornada cerrada). Una fila archivada no puede volver a ser "activa" por
+// culpa de un navegador que todavía la tenía de antes.
+// _avDel = lápidas {idAvance: ts}: avances que se RETOMARON (volvieron a ser
+// activos). Un avance solo vale si su ts es mayor que su lápida.
+function secArchivedKeys(doc){
+  var set={};if(!doc)return set;
+  var tomb=doc._avDel||{};
+  (doc._avances||[]).forEach(function(a){
+    if(!a)return;var t=tomb[a.id];if(t&&(a.ts||0)<=t)return;
+    (a.rows||[]).forEach(function(r){if(r&&r.key)set[r.key]=1;});
+  });
+  Object.keys(doc.hist||{}).forEach(function(f){
+    var j=doc.hist[f];if(!j||!j.cerrada)return;
+    Object.keys(j.slots||{}).forEach(function(k){
+      var sl=j.slots[k];if(sl&&sl.recs)sl.recs.forEach(function(r){if(r&&r.key)set[r.key]=1;});
+    });
+  });
+  return set;
+}
+function mergeAvDel(a,b){
+  var o={};
+  [a,b].forEach(function(m){Object.keys(m||{}).forEach(function(k){o[k]=Math.max(o[k]||0,m[k]||0);});});
+  return o;
+}
+function avValidos(avs,tomb){
+  return (avs||[]).filter(function(a){if(!a)return false;var t=(tomb||{})[a.id];return !(t&&(a.ts||0)<=t);});
+}
 function mergeSecSmartJS(old,newSec){
   if(!newSec)newSec={};
   if(!old)return newSec;
@@ -3464,7 +3497,8 @@ function mergeSecSmartJS(old,newSec){
   var incomingAv=newSec._avances||[];
   var incomingHistEmpty=!newSec.hist||Object.keys(newSec.hist).length===0;
   // Borrado total deliberado ("Borrar base"): se respeta tal cual
-  var isFullReset=incomingRows.length===0&&incomingAv.length===0&&incomingHistEmpty&&clearedTs>oldSavedTs;
+  var clearNewer=clearedTs>oldSavedTs||clearedTs>(old._clearedAt||0);
+  var isFullReset=incomingRows.length===0&&incomingAv.length===0&&incomingHistEmpty&&clearNewer;
   if(isFullReset)return newSec;
   // Histórico: unión por fecha, el más nuevo gana
   if(old.hist||newSec.hist){
@@ -3484,10 +3518,12 @@ function mergeSecSmartJS(old,newSec){
     newSec.hist=mergedHist;
   }
   // Avances guardados: unión por id — nunca se pierden
-  var oldAv=old._avances||[];
+  var tombAll=mergeAvDel(old._avDel,newSec._avDel);
+  newSec._avDel=tombAll;
+  var oldAv=avValidos(old._avances||[],tombAll);
   var byId={};
   oldAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
-  incomingAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
+  avValidos(incomingAv,tombAll).forEach(function(a){if(a&&a.id!=null){var p=byId[a.id];if(!p||(a.ts||0)>=(p.ts||0))byId[a.id]=a;}});
   var mergedAv=[];
   Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
   // Segunda pasada: colapsar por FECHA (no solo por id) — ver dedupeAvancesByFecha.
@@ -3498,7 +3534,7 @@ function mergeSecSmartJS(old,newSec){
   newSec._avances=mergedAv;
   var oldRows=old.rows||[];
   var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
-  if(incomingRows.length===0&&oldRows.length>0&&clearedTs<=oldSavedTs){
+  if(incomingRows.length===0&&oldRows.length>0&&!clearNewer){
     // Cliente viejo/inactivo re-guardando su estado vacío por accidente -> se ignora
     newSec.rows=oldRows;
     newSec.slotData=old.slotData||newSec.slotData;
@@ -3541,6 +3577,19 @@ function mergeSecSmartJS(old,newSec){
       nr._rowTs=Math.max(rowFallbackNts,rowFallbackOts);
     });
   }
+  // ── Membresía de filas activas ──
+  // (1) Un cliente desactualizado (que no vio las filas que otro cargó) NO
+  //     puede borrarlas al guardar: se conservan las filas activas del servidor
+  //     que no trae. Excepción: un cierre/archivado deliberado (clearNewer).
+  // (2) Una fila ya archivada (avance o jornada cerrada) no resucita como activa.
+  var archivedKeys=secArchivedKeys(newSec);
+  var oldKeyMap={};oldRows.forEach(function(r){oldKeyMap[r.key]=1;});
+  var finalRows=newSec.rows||[];
+  if(!(incomingRows.length===0&&clearNewer)){
+    var haveKeys={};finalRows.forEach(function(r){haveKeys[r.key]=1;});
+    oldRows.forEach(function(or){if(!haveKeys[or.key]&&!archivedKeys[or.key])finalRows.push(or);});
+  }
+  newSec.rows=finalRows.filter(function(r){return !archivedKeys[r.key]||oldKeyMap[r.key];});
   return newSec;
 }
 // Firestore rechaza de inmediato (sin red, sin reintento posible) cualquier
@@ -3618,24 +3667,45 @@ function fbSaveAll(isReset){
 // si no tengo filas, adopta las del servidor tal cual.
 function fbApplyIncoming(sec,gs){
   if(!gs)return;
-  if(gs.hist)SEC[sec].hist=Object.assign({},gs.hist,SEC[sec].hist);
-  if(gs._avances)SEC[sec]._avances=dedupeAvancesByFecha(gs._avances);
-  var localRows=SEC[sec].rows||[];
+  var Sx=SEC[sec];
+  if(gs.hist)Sx.hist=Object.assign({},gs.hist,Sx.hist);
+  // Avances: unión por id respetando lápidas (no reemplazo ciego, para no
+  // perder un avance recién guardado aquí que el servidor aún no devuelve)
+  Sx._avDel=mergeAvDel(Sx._avDel,gs._avDel);
+  var avById={};
+  avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
+  avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
+  Sx._avances=dedupeAvancesByFecha(Object.keys(avById).map(function(k){return avById[k];}));
+  var archived=secArchivedKeys({_avances:Sx._avances,_avDel:Sx._avDel,hist:Sx.hist});
+  var localRows=Sx.rows||[];
+  // Si el servidor ya archivó/cerró filas que yo todavía tenía activas (otro
+  // usuario cerró el día), las quito de mi pantalla en vez de re-subirlas luego.
+  var gsKeys={};(gs.rows||[]).forEach(function(r){gsKeys[r.key]=1;});
+  if(localRows.length){
+    var before=localRows.length;
+    localRows=localRows.filter(function(r){return !(archived[r.key]&&!gsKeys[r.key]);});
+    if(localRows.length!==before)Sx.rows=localRows;
+  }
+  // Borrado total deliberado hecho por otro usuario ("Borrar base")
+  if(!(gs.rows&&gs.rows.length)&&!(gs._avances&&gs._avances.length)&&(!gs.hist||!Object.keys(gs.hist).length)
+     &&(gs._clearedAt||0)>(Sx._clearedAt||0)&&localRows.length){
+    Sx.rows=localRows=[];
+  }
+  if((gs._clearedAt||0)>(Sx._clearedAt||0))Sx._clearedAt=gs._clearedAt;
   if(localRows.length===0){
     if(gs.rows&&gs.rows.length>0){
-      SEC[sec].rows=gs.rows;
-      if(gs.slotData)SEC[sec].slotData=gs.slotData;
-      if(gs.slotLoaded)SEC[sec].slotLoaded=gs.slotLoaded;
-      if(gs.slotSaved)SEC[sec].slotSaved=gs.slotSaved;
+      Sx.rows=gs.rows.filter(function(r){return !archived[r.key]||gsKeys[r.key];});
+      if(gs.slotData)Sx.slotData=gs.slotData;
+      if(gs.slotLoaded)Sx.slotLoaded=gs.slotLoaded;
+      if(gs.slotSaved)Sx.slotSaved=gs.slotSaved;
     }
   }else if(gs.rows&&gs.rows.length>0){
-    // Igual criterio que en el servidor (ver mergeSecSmartJS): fusión CAMPO
-    // POR CAMPO usando _fieldTs, no por fila completa — así editar un campo
-    // de una fila (ej. tipificación) ya no puede revertir un checkbox
-    // marcado a propósito en esa misma fila por otra persona.
+    // Fusión CAMPO POR CAMPO usando _fieldTs (ver mergeSecSmartJS)
     var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
     var gsMap={};gs.rows.forEach(function(r){gsMap[r.key]=r;});
+    var localKeys={};
     localRows.forEach(function(lr){
+      localKeys[lr.key]=1;
       var gr=gsMap[lr.key];if(!gr)return;
       var lFts=lr._fieldTs||{},gFts=gr._fieldTs||{};
       var rowFallbackLts=lr._rowTs||0,rowFallbackGts=gr._rowTs||0;
@@ -3650,6 +3720,13 @@ function fbApplyIncoming(sec,gs){
       lr._fieldTs=lFts;
       lr._rowTs=Math.max(rowFallbackLts,rowFallbackGts);
     });
+    // Filas que otro usuario cargó/tiene y yo no: adoptarlas. Antes se
+    // ignoraban, y al guardar yo después, mi lista incompleta las BORRABA
+    // del servidor (con sus checks) — el bug de "se borra de acá hacia abajo".
+    gs.rows.forEach(function(gr){
+      if(!localKeys[gr.key]&&!archived[gr.key])localRows.push(gr);
+    });
+    Sx.rows=localRows;
   }
 }
 function fbApplyUpdate(silent){
@@ -3906,6 +3983,7 @@ function lsLoad(){
       if(d.slotSaved)SEC[sec].slotSaved=d.slotSaved;
       if(d._clearedAt)SEC[sec]._clearedAt=d._clearedAt;
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
+      if(d._avDel)SEC[sec]._avDel=d._avDel;
       if(d._avances)SEC[sec]._avances=dedupeAvancesByFecha(d._avances);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
