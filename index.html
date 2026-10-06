@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB18</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB19</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -580,6 +580,22 @@ var firebaseConfig = {
   appId: "1:704576112298:web:01aa6db3e5b0d97011b2d3"
 };
 var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
+// Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
+// guardado para detectar a quien sigue usando una versión vieja, que es la que
+// borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
+var BUILD_NUM = 19;
+var _outdated = false;
+var _warnedOld = {};
+function showOutdated(){
+  if(document.getElementById('outdated-ov'))return;
+  var o=document.createElement('div');o.id='outdated-ov';
+  o.style.cssText='position:fixed;inset:0;background:rgba(4,36,51,.82);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  o.innerHTML='<div style="background:#fff;border-radius:12px;padding:26px;max-width:440px;text-align:center"><div style="font-size:34px">🔄</div>'+
+    '<div style="font-size:16px;font-weight:700;color:#042433;margin:6px 0">Hay una versión nueva del tracker</div>'+
+    '<div style="font-size:13px;color:#464E5F;margin-bottom:16px">Esta pantalla usa una versión antigua y podría borrar checks de otras personas, por eso quedó pausada. Recarga con <b>Ctrl+F5</b> para continuar.</div>'+
+    '<button onclick="location.reload(true)" style="background:#1BC5BD;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit">Recargar ahora</button></div>';
+  document.body.appendChild(o);
+}
 var fbApp=null, fbAuth=null, fbDb=null;
 if(FB_ENABLED && window.firebase){
   try{
@@ -3764,6 +3780,7 @@ function mergeSecSmartJS(old,newSec){
   // Lápidas de "Borrar un día": se unen y se purga lo anterior a la lápida
   newSec._dayDel=mergeAvDel(old._dayDel,newSec._dayDel);
   purgeDays(newSec);
+  newSec._minBuild=Math.max(old._minBuild||0,newSec._minBuild||0);
   return newSec;
 }
 // Firestore rechaza de inmediato (sin red, sin reintento posible) cualquier
@@ -3786,8 +3803,11 @@ function fbSaveSec(sec,isReset,_retry){
   var ref=fbSecRef(sec);
   var basePayload;
   try{basePayload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
+  if(_outdated){showOutdated();return Promise.resolve();}
   var savedAt=Date.now();
   basePayload._savedAt=savedAt;
+  basePayload._build=BUILD_NUM;basePayload._writer=CURRENT_USER||'';
+  basePayload._minBuild=BUILD_NUM;
   if(isReset)basePayload._clearedAt=savedAt;
   // Aviso defensivo: Firestore rechaza un documento de más de ~1MB. Si esta
   // sección se acerca a ese límite (hist/avances acumulando copias completas
@@ -3842,6 +3862,16 @@ function fbSaveAll(isReset){
 function fbApplyIncoming(sec,gs){
   if(!gs)return;
   var Sx=SEC[sec];
+  // Versión: si hay una más nueva que la mía, pauso mis guardados; si quien
+  // escribió usa una más vieja, aviso quién es para que recargue.
+  if((gs._minBuild||0)>BUILD_NUM){_outdated=true;showOutdated();}
+  if((gs._build||0)<BUILD_NUM&&gs._savedAt&&Date.now()-gs._savedAt<120000){
+    var wk=gs._writer||'otra persona';
+    if(!_warnedOld[wk]||Date.now()-_warnedOld[wk]>300000){
+      _warnedOld[wk]=Date.now();
+      toast('⚠️ '+wk+' está guardando con una versión antigua'+(gs._build?' (v'+gs._build+')':'')+' y puede borrar checks. Pídele recargar con Ctrl+F5.','warn');
+    }
+  }
   hlcSeen(gs.rows);hlcSeen(Sx.rows);
   if(gs.hist)Sx.hist=Object.assign({},gs.hist,Sx.hist);
   // Avances: unión por id respetando lápidas (no reemplazo ciego, para no
