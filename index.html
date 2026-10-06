@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB11</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB12</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -2797,6 +2797,7 @@ function refLabel(v){
   if(REF_ETIQUETAS[v])return REF_ETIQUETAS[v];
   if(/^tc$/i.test(v)||/casilla\s*tc/i.test(v))return 'Casilla TC';
   if(/f[ií]sic/i.test(v))return 'Notificación física';
+  if(/juan\s+jos[eé]\s+edquen/i.test(v))return 'Juan Jose Edquen';
   return v;
 }
 // Quién identificó el error (lista fija del equipo)
