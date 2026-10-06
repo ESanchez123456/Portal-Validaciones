@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB17</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB18</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -335,6 +335,7 @@ tr:hover td{background:#f7faff}
     <button class="btn bk" onclick="btnSyncNow()" id="btn-sync-now">🔄 Sincronizar</button>
     <button class="btn bk" onclick="btnLimpiar('notif')">✕ Limpiar filtros</button>
     <button class="btn br" onclick="btnBorrar('notif')">🗑 Borrar base</button>
+    <button class="btn br" onclick="showBorrarDia()" title="Borra un solo día: en curso, avances, histórico e indicadores">🗓 Borrar un día</button>
     <button id="btn-save-all" class="btn" style="display:none;background:#1BC5BD;color:#fff;font-weight:700" onclick="btnCerrarNotif()">🎉 Cerrar y archivar jornada</button>
   </div>
   <div id="gs-update-banner" style="display:none;margin-bottom:10px;padding:10px 14px;background:#FFF4DE;border:1px solid #FFA800;border-radius:8px;align-items:center;justify-content:space-between;gap:10px">
@@ -712,7 +713,7 @@ function getES(e){return ES[e]||ES['Pendiente'];}
 function hv(r,v){return r.vs===v||r.ve===v||r.vt===v;}
 function gv(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-function baseR(sec){return{est:'Pendiente',rev:'',val:'',val_edu:false,val_cld:false,val_ok:false,val50:'',jose_ok:false,jemima_ok:false,nestor_ok:false,frev:'',vs:'',ve:'',vt:'',ov:'',tif:'',stif:'',ident:'',paralegal:'',par_ok:false,fc:now(),section:sec||'syp'};}
+function baseR(sec){return{est:'Pendiente',rev:'',val:'',val_edu:false,val_cld:false,val_ok:false,val50:'',jose_ok:false,jemima_ok:false,nestor_ok:false,frev:'',vs:'',ve:'',vt:'',ov:'',tif:'',stif:'',ident:'',paralegal:'',par_ok:false,fc:now(),_ld:Date.now(),section:sec||'syp'};}
 function toast(msg,type){
   var el=document.createElement('div');
   el.className='toast t-'+(type==='ok'?'ok':type==='warn'?'warn':'err');
@@ -3564,6 +3565,76 @@ function separarDiasActivos(){
     return true;
   }finally{_sepBusy=false;}
 }
+// ── Borrar un día completo (filas activas + avances + histórico/indicadores) ──
+// Lápida por fecha en S._dayDel[fecha]=T. Se purga lo cargado ANTES de T
+// (filas sin _ld o con _ld<=T, avances con ts<=T); lo cargado después sobrevive.
+function purgeDays(S){
+  var dd=S&&S._dayDel;if(!dd||!Object.keys(dd).length)return;
+  function gone(r){var t=dd[fechaDiaR(r)];return !!t&&((r&&r._ld)||0)<=t;}
+  if(S.rows)S.rows=S.rows.filter(function(r){return !gone(r);});
+  if(S._avances)S._avances=S._avances.filter(function(a){
+    if(!a)return false;var t=dd[a.fechaNotif||a.fecha];return !(t&&(a.ts||0)<=t);
+  });
+  if(S.hist)Object.keys(S.hist).forEach(function(f){
+    var j=S.hist[f];if(!j||!j.slots)return;
+    var tot=0,quitadas=0;
+    Object.keys(j.slots).forEach(function(k){
+      var sl=j.slots[k];if(!sl||!sl.recs)return;
+      var n=sl.recs.length;sl.recs=sl.recs.filter(function(r){return !gone(r);});
+      quitadas+=n-sl.recs.length;sl.n=sl.recs.length;tot+=sl.recs.length;
+    });
+    if(quitadas&&!tot)delete S.hist[f];
+  });
+}
+function diasConDatos(){
+  var S=SEC.notif,m={};
+  function add(r,k,ld){var d=fechaDiaR(r);var o=m[d]=m[d]||{act:0,av:0,hist:0,maxLd:0};o[k]++;if((r._ld||0)>o.maxLd)o.maxLd=r._ld||0;}
+  (S.rows||[]).forEach(function(r){add(r,'act');});
+  (S._avances||[]).forEach(function(a){(a.rows||[]).forEach(function(r){add(r,'av');});});
+  Object.keys(S.hist||{}).forEach(function(f){var j=S.hist[f];Object.keys((j&&j.slots)||{}).forEach(function(k){var sl=j.slots[k];(sl&&sl.recs||[]).forEach(function(r){add(r,'hist');});});});
+  return m;
+}
+function cerrarBorrarDia(){var o=document.getElementById('borrar-dia-ov');if(o)o.remove();}
+function showBorrarDia(){
+  var m=diasConDatos(),ds=Object.keys(m).sort(function(a,b){return fechaSortKey(b)-fechaSortKey(a);});
+  if(!ds.length){toast('No hay datos de ningún día para borrar','warn');return;}
+  cerrarBorrarDia();
+  var o=document.createElement('div');o.id='borrar-dia-ov';
+  o.style.cssText='position:fixed;inset:0;background:rgba(4,36,51,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  var h='<div style="background:#fff;border-radius:12px;padding:20px;max-width:520px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.25)">'+
+    '<div style="font-size:15px;font-weight:700;color:#042433;margin-bottom:4px">🗓 Borrar un día</div>'+
+    '<div style="font-size:12px;color:#8a96a3;margin-bottom:12px">Borra ese día de todo: trabajo en curso, avances guardados, histórico e indicadores. Es para TODOS los usuarios y no se puede deshacer.</div>';
+  ds.forEach(function(d){
+    var o2=m[d];
+    h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #eef1f5">'+
+      '<div style="flex:1"><b style="color:#042433;font-size:13px">'+esc(d)+'</b><div style="font-size:11px;color:#8a96a3">'+
+      (o2.act?o2.act+' en curso · ':'')+(o2.av?o2.av+' en avance guardado · ':'')+(o2.hist?o2.hist+' en histórico':'')+'</div></div>'+
+      '<button onclick="borrarDia(\''+d+'\')" style="background:#F64E60;color:#fff;border:none;padding:6px 14px;border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Borrar</button></div>';
+  });
+  h+='<div style="text-align:right;margin-top:12px"><button class="btn bk" onclick="cerrarBorrarDia()">Cerrar</button></div></div>';
+  o.innerHTML=h;o.onclick=function(e){if(e.target===o)cerrarBorrarDia();};
+  document.body.appendChild(o);
+}
+function borrarDia(d){
+  var m=diasConDatos(),i=m[d];if(!i){cerrarBorrarDia();return;}
+  if(!confirm('⚠️ Vas a borrar TODO el '+d+' para todos los usuarios:\n\n'+
+    (i.act?'• '+i.act+' registros en curso\n':'')+(i.av?'• '+i.av+' registros en avances guardados\n':'')+(i.hist?'• '+i.hist+' registros del histórico (indicadores)\n':'')+
+    '\nLos demás días no se tocan. No se puede deshacer. ¿Continuar?'))return;
+  var S=SEC.notif;
+  S._dayDel=S._dayDel||{};
+  S._dayDel[d]=Math.max(Date.now(),(i.maxLd||0)+1);
+  purgeDays(S);
+  (S.slots||[]).forEach(function(sl){
+    if(!S.rows.some(function(r){return r.slot===sl;})){S.slotLoaded[sl]=false;S.slotSaved[sl]=false;S.slotData[sl]=[];
+      var l=document.getElementById('lbl-'+sl);if(l)l.classList.remove('loaded');
+      var t=document.getElementById('lbl-'+sl+'-txt');if(t)t.textContent=SLOT_BASE[sl];}
+    else if(Array.isArray(S.slotData[sl]))S.slotData[sl]=S.slotData[sl].filter(function(r){return fechaDiaR(r)!==d;});
+  });
+  cerrarBorrarDia();
+  lsSave();
+  refreshSec('notif');renderWF('notif');renderHist('notif');updateAvancePill();renderInd();
+  toast('🗑 Se borró el '+d+' (en curso, avances e histórico)','warn');
+}
 function normAvances(avs,tomb){return avValidos(dedupeAvancesByFecha(splitAvancesPorFecha(avs)),tomb);}
 function secArchivedKeys(doc){
   var set={};if(!doc)return set;
@@ -3690,6 +3761,9 @@ function mergeSecSmartJS(old,newSec){
     oldRows.forEach(function(or){if(!haveKeys[or.key]&&!archivedKeys[or.key])finalRows.push(or);});
   }
   newSec.rows=finalRows.filter(function(r){return !archivedKeys[r.key]||oldKeyMap[r.key];});
+  // Lápidas de "Borrar un día": se unen y se purga lo anterior a la lápida
+  newSec._dayDel=mergeAvDel(old._dayDel,newSec._dayDel);
+  purgeDays(newSec);
   return newSec;
 }
 // Firestore rechaza de inmediato (sin red, sin reintento posible) cualquier
@@ -3773,6 +3847,7 @@ function fbApplyIncoming(sec,gs){
   // Avances: unión por id respetando lápidas (no reemplazo ciego, para no
   // perder un avance recién guardado aquí que el servidor aún no devuelve)
   Sx._avDel=mergeAvDel(Sx._avDel,gs._avDel);
+  Sx._dayDel=mergeAvDel(Sx._dayDel,gs._dayDel);
   var avById={};
   avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
   avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
@@ -3831,6 +3906,7 @@ function fbApplyIncoming(sec,gs){
   }
   // Si llegaron filas de varios días mezcladas (datos viejos o de otro usuario),
   // se separan: el día más reciente queda activo y los anteriores pasan a avances.
+  purgeDays(Sx);
   if(sec==='notif'&&separarDiasActivos())setTimeout(lsSave,0);
 }
 function fbApplyUpdate(silent){
@@ -4088,12 +4164,14 @@ function lsLoad(){
       if(d._clearedAt)SEC[sec]._clearedAt=d._clearedAt;
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
       if(d._avDel)SEC[sec]._avDel=d._avDel;
+      if(d._dayDel)SEC[sec]._dayDel=d._dayDel;
       if(d._avances)SEC[sec]._avances=normAvances(d._avances,d._avDel);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
         if(!d._avance.id)d._avance.id=Date.now();
         SEC[sec]._avances=[d._avance];
       }
+      purgeDays(SEC[sec]);
     }
     loadSecFromLS('syp','tracker_cid_sec_syp');
     loadSecFromLS('notif','tracker_cid_sec_notif');
