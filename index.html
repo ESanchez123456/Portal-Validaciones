@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB13</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB14</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -1148,6 +1148,7 @@ function buildStifSel(k,tif,v){
 function chTif(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r.tif=sel.value;r.stif='';
+  touchFields(r,['tif','stif']);
   // Update subtif select
   var stifSel=document.getElementById('stif_'+sel.dataset.k);
   if(stifSel){
@@ -1234,10 +1235,31 @@ function chVal(sel){
 // borraba justo cuando salía el aviso de sincronizado". Ahora cada CAMPO
 // lleva su propia marca de tiempo en r._fieldTs, y la fusión compara campo
 // por campo — editar tipificación ya no puede pisar un checkbox.
+// Reloj lógico híbrido: cada edición recibe una marca SIEMPRE mayor que
+// cualquier marca que este navegador haya visto de otros. Así, un reloj de PC
+// atrasado (hay 8 PCs distintas) no puede hacer que su check marcado pierda
+// contra una edición vieja de otro. _hlcMax se actualiza al recibir datos.
+var _hlcMax=0;
+function hlcSeen(rows){
+  (rows||[]).forEach(function(r){
+    if(!r)return;
+    if(r._rowTs>_hlcMax)_hlcMax=r._rowTs;
+    var f=r._fieldTs;if(f)for(var k in f){if(f[k]>_hlcMax)_hlcMax=f[k];}
+  });
+}
+// Marca de un campo. Si la fila ya tiene marcas por campo, un campo SIN marca
+// propia vale 0 (nunca se tocó): NO hereda la marca de la fila, porque esa
+// sube cuando alguien edita CUALQUIER otro campo y pisaba checks ajenos.
+// Solo filas antiguas sin ninguna marca por campo usan _rowTs como respaldo.
+function fieldTsOf(fts,rowTs,f){
+  if(f in fts)return fts[f];
+  for(var k in fts)return 0;
+  return rowTs||0;
+}
 function touchFields(r,fields){
   if(!r)return;
   r._fieldTs=r._fieldTs||{};
-  var now=Date.now();
+  var now=Math.max(Date.now(),_hlcMax+1);_hlcMax=now;
   (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
   r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
 }
@@ -2980,16 +3002,18 @@ function filterV50Col(sel){
 }
 function chFldNotif(el){
   var r=findR(el.dataset.k);if(!r)return;
-  r[el.dataset.f]=el.value;debounceSave(r);
+  r[el.dataset.f]=el.value;touchFields(r,[el.dataset.f]);debounceSave(r);
 }
 function chJoseOk(cb){
   var r=findR(cb.dataset.k);if(!r)return;
   r.jose_ok=cb.checked;
+  touchFields(r,['jose_ok']);
   debounceSave(r);
 }
 function chVal50(sel){
   var r=findR(sel.dataset.k);if(!r)return;
   r.val50=sel.value;
+  touchFields(r,['val50']);
   debounceSave(r);
 }
 function btnGuardarAvance(){
@@ -3562,8 +3586,8 @@ function mergeSecSmartJS(old,newSec){
         // Si a algún lado le falta _fieldTs para este campo específico (fila
         // vieja de antes de este cambio), se usa el _rowTs de esa fila como
         // respaldo, para no perder el comportamiento anterior en datos viejos.
-        var nts=(f in nFts)?nFts[f]:rowFallbackNts;
-        var ots=(f in oFts)?oFts[f]:rowFallbackOts;
+        var nts=fieldTsOf(nFts,rowFallbackNts,f);
+        var ots=fieldTsOf(oFts,rowFallbackOts,f);
         if(ots>nts){
           // ojo: or[f] puede ser undefined si esa fila vieja nunca tuvo este
           // campo. Firestore RECHAZA de inmediato cualquier documento con un
@@ -3668,6 +3692,7 @@ function fbSaveAll(isReset){
 function fbApplyIncoming(sec,gs){
   if(!gs)return;
   var Sx=SEC[sec];
+  hlcSeen(gs.rows);hlcSeen(Sx.rows);
   if(gs.hist)Sx.hist=Object.assign({},gs.hist,Sx.hist);
   // Avances: unión por id respetando lápidas (no reemplazo ciego, para no
   // perder un avance recién guardado aquí que el servidor aún no devuelve)
@@ -3710,8 +3735,8 @@ function fbApplyIncoming(sec,gs){
       var lFts=lr._fieldTs||{},gFts=gr._fieldTs||{};
       var rowFallbackLts=lr._rowTs||0,rowFallbackGts=gr._rowTs||0;
       EDIT_FIELDS.forEach(function(f){
-        var lts=(f in lFts)?lFts[f]:rowFallbackLts;
-        var gts=(f in gFts)?gFts[f]:rowFallbackGts;
+        var lts=fieldTsOf(lFts,rowFallbackLts,f);
+        var gts=fieldTsOf(gFts,rowFallbackGts,f);
         if(gts>lts){
           if(gr[f]!==undefined)lr[f]=gr[f];
           lFts[f]=gts;
