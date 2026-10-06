@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB19</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB20</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -583,7 +583,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 19;
+var BUILD_NUM = 20;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -711,6 +711,31 @@ function getRespParalegal(resp){
 function pad(n){return String(n).padStart(2,'0');}
 function now(){var d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
 // Día (DD/MM/AAAA) de una fila de notificaciones, a partir de su fecha de notificación
+// ── Claves de fila únicas ──
+// La clave de una fila es 'tipo|slot|id|expediente'. Si un mismo proceso aparece
+// 2+ veces en el mismo reporte (dos resoluciones notificadas el mismo día), esas
+// filas compartían clave: el checkbox de la 2ª marcaba en realidad la 1ª (findR
+// devuelve la primera coincidencia) y al repintar la 2ª aparecía "desmarcada" —
+// por eso nunca se llegaba al 100%. Aquí se desambigua por contenido (descripción),
+// de forma determinística, para que todas las PCs calculen la misma clave.
+function rowHash(s){
+  var h=5381;s=String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+  for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;
+  return h.toString(36);
+}
+function uniqRowKeys(rows){
+  if(!rows||rows.length<2)return rows;
+  var cnt={};
+  rows.forEach(function(r){if(r&&r.key)cnt[r.key]=(cnt[r.key]||0)+1;});
+  var seen={};
+  rows.forEach(function(r){
+    if(!r||!r.key||cnt[r.key]<2)return;
+    var nk=r.key+'~'+rowHash(r.desc);
+    if(seen[nk]){seen[nk]++;nk=nk+'#'+seen[nk];}else seen[nk]=1;
+    r.key=nk;
+  });
+  return rows;
+}
 function fechaDiaR(r){return String((r&&r.fc2)||'').substring(0,10)||'Sin fecha';}
 function fechaSortKey(d){var m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(d||'');return m?Number(m[3]+m[2]+m[1]):99999999;}
 // Fechas distintas presentes en un conjunto de filas, ordenadas cronológicamente
@@ -793,6 +818,7 @@ function processFile(file,tipo,slotId,sec){
       }
       else if(sec==='sup')nuevos=normSup(data,slotId);
       else nuevos=tipo==='T'?normT(data,slotId):normN(data,slotId);
+      uniqRowKeys(nuevos);
       S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
@@ -3132,7 +3158,7 @@ function btnRetomarAvance(id){
     av=avs[idx];
   }
   // Restore rows from snapshot and remove it from the saved list (it's active again)
-  SEC.notif.rows=JSON.parse(JSON.stringify(av.rows||[]));
+  SEC.notif.rows=uniqRowKeys(JSON.parse(JSON.stringify(av.rows||[])));
   if(av.slotLoaded)SEC.notif.slotLoaded=JSON.parse(JSON.stringify(av.slotLoaded));
   if(av.slotData)SEC.notif.slotData=JSON.parse(JSON.stringify(av.slotData));
   avs.splice(idx,1);
@@ -3651,7 +3677,7 @@ function borrarDia(d){
   refreshSec('notif');renderWF('notif');renderHist('notif');updateAvancePill();renderInd();
   toast('🗑 Se borró el '+d+' (en curso, avances e histórico)','warn');
 }
-function normAvances(avs,tomb){return avValidos(dedupeAvancesByFecha(splitAvancesPorFecha(avs)),tomb);}
+function normAvances(avs,tomb){(avs||[]).forEach(function(a){if(a&&a.rows)uniqRowKeys(a.rows);});return avValidos(dedupeAvancesByFecha(splitAvancesPorFecha(avs)),tomb);}
 function secArchivedKeys(doc){
   var set={};if(!doc)return set;
   var tomb=doc._avDel||{};
@@ -3680,7 +3706,8 @@ function mergeSecSmartJS(old,newSec){
   if(!old)return newSec;
   var clearedTs=newSec._clearedAt||0;
   var oldSavedTs=old._savedAt||0;
-  var incomingRows=newSec.rows||[];
+  var incomingRows=uniqRowKeys(newSec.rows||[]);
+  if(newSec.rows)newSec.rows=incomingRows;
   var incomingAv=newSec._avances||[];
   var incomingHistEmpty=!newSec.hist||Object.keys(newSec.hist).length===0;
   // Borrado total deliberado ("Borrar base"): se respeta tal cual
@@ -3719,7 +3746,7 @@ function mergeSecSmartJS(old,newSec){
   // de todas las filas. Se conservan los 60 más recientes.
   if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
   newSec._avances=mergedAv;
-  var oldRows=old.rows||[];
+  var oldRows=uniqRowKeys(old.rows||[]);
   var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
   if(incomingRows.length===0&&oldRows.length>0&&!clearNewer){
     // Cliente viejo/inactivo re-guardando su estado vacío por accidente -> se ignora
@@ -3872,6 +3899,7 @@ function fbApplyIncoming(sec,gs){
       toast('⚠️ '+wk+' está guardando con una versión antigua'+(gs._build?' (v'+gs._build+')':'')+' y puede borrar checks. Pídele recargar con Ctrl+F5.','warn');
     }
   }
+  uniqRowKeys(gs.rows);uniqRowKeys(Sx.rows);
   hlcSeen(gs.rows);hlcSeen(Sx.rows);
   if(gs.hist)Sx.hist=Object.assign({},gs.hist,Sx.hist);
   // Avances: unión por id respetando lápidas (no reemplazo ciego, para no
@@ -4186,7 +4214,7 @@ function lsLoad(){
       if(!raw)return;
       var d=JSON.parse(raw);
       // Always restore everything from localStorage (it's local, trusted)
-      if(d.rows)SEC[sec].rows=d.rows;
+      if(d.rows)SEC[sec].rows=uniqRowKeys(d.rows);
       if(d.hist)SEC[sec].hist=d.hist;
       if(d.slotData)SEC[sec].slotData=d.slotData;
       if(d.slotLoaded)SEC[sec].slotLoaded=d.slotLoaded;
