@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB25</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB26</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 25;
+var BUILD_NUM = 26;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1339,6 +1339,8 @@ var _lockToastTs=0;
     if(!o)return;
     var t=e.target;
     if(!t.closest||!t.closest('input,select,textarea'))return;
+    // Las casillas de revisión 50% (Jose/Jemima/Nestor) siempre se pueden marcar, aunque el día sea de otra persona
+    if(t.dataset&&(t.dataset.f50==='jose_ok'||t.dataset.f50==='jemima_ok'||t.dataset.f50==='nestor_ok'))return;
     if(ev==='keydown'&&(e.key==='Tab'||e.key.indexOf('Arrow')===0))return;
     e.preventDefault();e.stopPropagation();
     if(Date.now()-_lockToastTs>2500){_lockToastTs=Date.now();toast('🔒 '+fn1(o.by)+' está trabajando el '+d+'. Estás en modo lectura (usa "Tomar el día" si hace falta).','warn');}
@@ -1350,7 +1352,7 @@ function renderOwnerBanner(){
   if(!d){el.style.display='none';return;}
   var o=dayOwner(d),st,bg,bd,btn='';
   if(o&&o.by!==CURRENT_USER){
-    st='🔒 <b>'+esc(fn1(o.by))+'</b> está trabajando el <b>'+d+'</b> ('+haceMin(o.ts)+'). Estás en <b>modo lectura</b> para no pisar su trabajo.';
+    st='🔒 <b>'+esc(fn1(o.by))+'</b> está trabajando el <b>'+d+'</b> ('+haceMin(o.ts)+'). Estás en <b>modo lectura</b> para no pisar su trabajo (solo puedes marcar tu casilla de revisión 50%).';
     bg='#fff5f5';bd='#fc8181';btn='<button class="btn" onclick="tomarDia()" style="padding:5px 12px">✋ Tomar el día</button>';
   }else if(o){
     st='✋ <b>Tú</b> estás trabajando el <b>'+d+'</b>. Los demás lo ven en modo lectura.';
@@ -1476,7 +1478,8 @@ function touchFields(r,fields){
   var now=Math.max(Date.now(),_hlcMax+1);_hlcMax=now;
   (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
   if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER){r._by=CURRENT_USER;r._byTs=now;}
-  if(/^N\dn$/.test(r.slot||''))claimDay(fechaDiaR(r),true);
+  var _soloRev=(fields||[]).length>0&&(fields||[]).every(function(f){return f==='jose_ok'||f==='jemima_ok'||f==='nestor_ok';});
+  if(!_soloRev&&/^N\dn$/.test(r.slot||''))claimDay(fechaDiaR(r),true);
   r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
 }
 function debounceSave(r){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
