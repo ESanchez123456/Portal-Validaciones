@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-06-FB22</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB23</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -321,6 +321,7 @@ tr:hover td{background:#f7faff}
     <div class="wf-wrap" id="wfbar-notif"></div>
   </div>
     <!-- 4ta píldora: avance guardado -->
+    <div id="notif-day-bar" style="display:none;margin:8px 0;gap:8px;align-items:center;flex-wrap:wrap"></div>
     <div id="notif-avance-pill" style="display:none;margin:8px 0;padding:10px 16px;background:#fff;border:2px solid #1BC5BD;border-radius:10px;align-items:center;gap:12px;flex-wrap:wrap">
       <span id="notif-avance-lbl" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#1BC5BD">📌 Avances guardados</span>
       <span id="notif-avance-fecha" style="font-size:11.5px;color:#464E5F;font-weight:500"></span>
@@ -583,7 +584,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 22;
+var BUILD_NUM = 23;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -775,7 +776,7 @@ function loadFile(e,tipo,slotId,sec){
   var f=e.target.files[0];if(!f){e.target.value='';return;}
   sec=sec||'syp';
   var S=SEC[sec];
-  var alreadyLoaded=S.slotLoaded[slotId]&&S.rows.filter(function(r){return r.slot===slotId;}).length>0;
+  var alreadyLoaded=sec==='notif'?viewSlotLoaded(slotId):(S.slotLoaded[slotId]&&S.rows.filter(function(r){return r.slot===slotId;}).length>0);
   var uploader=S._slotUploader&&S._slotUploader[slotId];
   askUserAndLoad(f,tipo,slotId,sec,alreadyLoaded,uploader);
   e.target.value='';
@@ -819,7 +820,11 @@ function processFile(file,tipo,slotId,sec){
       else if(sec==='sup')nuevos=normSup(data,slotId);
       else nuevos=tipo==='T'?normT(data,slotId):normN(data,slotId);
       uniqRowKeys(nuevos);
-      S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
+      if(sec==='notif'){
+        // Solo se reemplaza lo MISMO slot + MISMOS días del archivo; los demás días no se tocan.
+        var _nd={};nuevos.forEach(function(r){_nd[fechaDiaR(r)]=1;});
+        S.rows=S.rows.filter(function(r){return !(r.slot===slotId&&_nd[fechaDiaR(r)]);});
+      }else S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
       nuevos.forEach(function(r){if(ex[r.key])dup++;else{S.rows.push(r);ag++;}});
@@ -842,7 +847,11 @@ function processFile(file,tipo,slotId,sec){
         });
       }
       var _sepMsg='';
-      if(sec==='notif'&&separarDiasActivos()){_sepMsg=' · los días anteriores pasaron a "Avances guardados" (separados por fecha)';lsSave();updateAvancePill();}
+      if(sec==='notif'){
+        var _nds=fechasDe(nuevos);
+        if(_nds.length&&_nds.indexOf(curDay())<0)_viewDay=_nds[_nds.length-1];
+        if(_nds.length>1)_sepMsg=' · el archivo trae '+_nds.length+' fechas ('+_nds.join(', ')+'); cambia de día con los botones 📅';
+      }
       refreshSec(sec);renderWF(sec);
       toast('✅ '+ag+' cargados'+(dup?', '+dup+' duplicados omitidos':'')+_sepMsg);
     }catch(err){toast('Error: '+err.message,'err');}
@@ -915,7 +924,7 @@ function renderWF(sec){
   var slots=slotsMap[sec]||slotsMap.syp;
   var h='';
   slots.forEach(function(s,i){
-    var done=S.slotSaved[s.id],active=S.slotLoaded[s.id]&&!done;
+    var done=sec==='notif'?false:S.slotSaved[s.id],active=(sec==='notif'?viewSlotLoaded(s.id):S.slotLoaded[s.id])&&!done;
     var cls=done?'done':active?'active':'pending';
     h+='<div class="wf-step"><div class="wf-dot '+cls+'">'+(done?'✓':(i+1))+'</div><div class="wf-label '+cls+'">'+s.lbl+'</div></div>';
     if(i<slots.length-1)h+='<div class="wf-line'+(done?' done':'')+'"></div>';
@@ -1006,10 +1015,10 @@ function fillSel(id,vals,sec){
   vals.forEach(function(v){s.innerHTML+='<option>'+esc(v)+'</option>';});
   s.value=cur;
 }
-function uniq(f,sec){sec=sec||'syp';var S=SEC[sec];var seen={},out=[];S.rows.forEach(function(r){if(r[f]&&!seen[r[f]]){seen[r[f]]=1;out.push(r[f]);}});return out.sort();}
+function uniq(f,sec){sec=sec||'syp';var S=SEC[sec];var seen={},out=[];(sec==='notif'?viewRows():S.rows).forEach(function(r){if(r[f]&&!seen[r[f]]){seen[r[f]]=1;out.push(r[f]);}});return out.sort();}
 
 function calcKPIs(sec){
-  sec=sec||'syp';var S=SEC[sec];var rows=S.rows;
+  sec=sec||'syp';var S=SEC[sec];var rows=sec==='notif'?viewRows():S.rows;
   if(sec==='sup'){
     var t=rows.length,ok=rows.filter(function(r){return r.estRev==='Revisado';}).length;
     sv('kT-sup',t);sv('kP-sup',rows.filter(function(r){return r.estRev==='Pendiente';}).length);
@@ -1034,7 +1043,7 @@ function calcKPIs(sec){
   sv('kA-'+sec,t?Math.round(ok/t*100)+'%':'0%');
 }
 function calcAlerts(sec){
-  sec=sec||'syp';var rows=SEC[sec].rows;
+  sec=sec||'syp';var rows=sec==='notif'?viewRows():SEC[sec].rows;
   if(sec==='sup'){
     var pen=rows.filter(function(r){return r.estRev==='Pendiente';}).length;
     sv('awn-sup',pen);var awEl=document.getElementById('aw-sup');if(awEl)awEl.className='abox aw'+(pen?' on':'');
@@ -1233,10 +1242,58 @@ function renderNotifTable(){
   tb.innerHTML=h;
   // paint() will handle show/hide via CSS from now on
 }
+// ── Vista de día POR USUARIO (solo local, nunca se guarda ni se sincroniza) ──
+// Las filas de todos los días conviven en el documento compartido, pero cada
+// persona ve el día que ELIGE. Que otra persona cambie de día, cargue otro
+// reporte o guarde un avance NO mueve tu vista.
+var _viewDay=null;
+function curDay(){
+  var ds=fechasDe(SEC.notif.rows||[]);
+  if(!ds.length)return null;
+  if(_viewDay&&ds.indexOf(_viewDay)>=0)return _viewDay;
+  _viewDay=ds[ds.length-1];
+  return _viewDay;
+}
+function viewRows(){
+  var d=curDay();
+  if(!d)return [];
+  return SEC.notif.rows.filter(function(r){return fechaDiaR(r)===d;});
+}
+function viewSlotLoaded(s){return viewRows().some(function(r){return r.slot===s;});}
+function setViewDay(d){
+  _viewDay=d;
+  refreshSec('notif');renderWF('notif');
+  var tb=document.getElementById('tbody-notif');
+  if(tb&&tb.parentNode&&tb.parentNode.scrollIntoView){}
+}
+function renderDayBar(){
+  var el=document.getElementById('notif-day-bar');if(!el)return;
+  var rows=SEC.notif.rows||[],ds=fechasDe(rows);
+  if(!ds.length){el.style.display='none';el.innerHTML='';return;}
+  var cur=curDay();
+  el.style.display='flex';
+  var h='<span style="font-size:11.5px;font-weight:700;color:var(--muted)">📅 Tu vista (solo tú):</span>';
+  ds.forEach(function(d){
+    var rs=rows.filter(function(r){return fechaDiaR(r)===d;});
+    var ok=rs.filter(function(r){return r.val_ok;}).length;
+    var pct=rs.length?Math.round(ok/rs.length*100):0;
+    var on=d===cur;
+    h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+d+' · '+rs.length+' · '+pct+'%</button>';
+  });
+  el.innerHTML=h;
+}
+function syncNotifSlotLabels(){
+  ['N1n','N2n','N3n'].forEach(function(s){
+    var lbl=document.getElementById('lbl-'+s),txt=document.getElementById('lbl-'+s+'-txt');
+    var n=viewRows().filter(function(r){return r.slot===s;}).length;
+    if(lbl){if(n)lbl.classList.add('loaded');else lbl.classList.remove('loaded');}
+    if(txt)txt.textContent=SLOT_BASE[s]+(n?' ('+n+')':'');
+  });
+}
 function getNotifRows(){
-  // Only the active/live rows ever paint into the main table.
-  // Saved checkpoints (SEC.notif._avances) only come back via btnRetomarAvance().
-  return SEC.notif.rows;
+  // Solo las filas del día que ESTE usuario está viendo.
+  // Los avances guardados solo vuelven con btnRetomarAvance().
+  return viewRows();
 }
 function findR(k){
   var uk=unescKey(k);
@@ -1359,17 +1416,19 @@ function refreshSec(sec){
   sec=sec||'syp';var S=SEC[sec];
   if(sec==='notif'){
     fillSel('fR-notif',uniq('resp','notif'));fillSel('fS-notif',uniq('sup','notif'));
-    var bn=document.getElementById('hbadge-notif');if(bn)bn.textContent='Notif: '+S.rows.length;
+    var VR=viewRows();
+    var bn=document.getElementById('hbadge-notif');if(bn)bn.textContent='Notif: '+VR.length+(S.rows.length!==VR.length?' (de '+S.rows.length+')':'');
+    renderDayBar();syncNotifSlotLabels();
     // Show/hide lock banner
-    var allLoaded=!!(SEC.notif.slotLoaded['N1n']&&SEC.notif.slotLoaded['N2n']&&SEC.notif.slotLoaded['N3n']);
+    var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'));
     var banner=document.getElementById('notif-lock-banner');
     if(banner){
       banner.style.display=allLoaded?'none':'block';
       if(!allLoaded){
         var missing=[];
-        if(!SEC.notif.slotLoaded['N1n'])missing.push('Notif. 1');
-        if(!SEC.notif.slotLoaded['N2n'])missing.push('Notif. 2');
-        if(!SEC.notif.slotLoaded['N3n'])missing.push('Notif. 3');
+        if(!viewSlotLoaded('N1n'))missing.push('Notif. 1');
+        if(!viewSlotLoaded('N2n'))missing.push('Notif. 2');
+        if(!viewSlotLoaded('N3n'))missing.push('Notif. 3');
         var mEl=document.getElementById('notif-slots-faltantes');
         if(mEl)mEl.textContent=missing.join(', ');
       }
@@ -1377,12 +1436,12 @@ function refreshSec(sec){
     // Update leyenda
     var leyendaEl=document.getElementById('notif-leyenda');
     var leyendaCards=document.getElementById('notif-leyenda-cards');
-    if(leyendaEl&&leyendaCards&&S.rows.length>0){
+    if(leyendaEl&&leyendaCards&&VR.length>0){
       leyendaEl.style.display='block';
-      var total=S.rows.length;
-      var joseN=S.rows.filter(function(r){return r.val50==='Jose Gutierrez';}).length;
-      var jemimaV50=S.rows.filter(function(r){return r.val50==='Jemima Gonzales';}).length;
-      var nestorV50=S.rows.filter(function(r){return r.val50==='Nestor Rossell';}).length;
+      var total=VR.length;
+      var joseN=VR.filter(function(r){return r.val50==='Jose Gutierrez';}).length;
+      var jemimaV50=VR.filter(function(r){return r.val50==='Jemima Gonzales';}).length;
+      var nestorV50=VR.filter(function(r){return r.val50==='Nestor Rossell';}).length;
       var reviewers=[
         {name:'Edu / Claudia', n:total, role:'Validan 100% (uno o ambos)', color:'#042433', bg:'#eef1f5'},
         {name:'Jose Gutierrez',  n:joseN,     role:'Revisión 50% cruzada',  color:'#744210', bg:'#fefce8'},
@@ -1406,7 +1465,7 @@ function refreshSec(sec){
     // Auto-assign paralegal + val50 when all 3 loaded
     if(allLoaded){
       var byP={'Jemima Gonzales':[],'Nestor Rossell':[],'':[]};
-      S.rows.forEach(function(r){
+      VR.forEach(function(r){
         if(!r.paralegal){
           var p=getParalegalByResp(r.resp)||r._detectedParalegal||'';
           r.paralegal=p;
@@ -1576,8 +1635,7 @@ function btnBorrar(sec){
 function sortedFechas(sec){
   var S=SEC[sec||'syp'];var h=S.hist||{};
   return Object.keys(h).sort(function(a,b){
-    var pa=a.split('/'),pb=b.split('/');
-    return new Date(pb[2],pb[1]-1,pb[0])-new Date(pa[2],pa[1]-1,pa[0]);
+    return (fechaSortKey(b)-fechaSortKey(a))||(a<b?1:a>b?-1:0);
   });
 }
 
@@ -3107,54 +3165,43 @@ function chVal50(sel){
   touchFields(r,['val50']);
   debounceSave(r);
 }
+function removeDayFromActive(S,d){
+  S.rows=S.rows.filter(function(r){return fechaDiaR(r)!==d;});
+  (S.slots||[]).forEach(function(sl){
+    if(Array.isArray(S.slotData[sl]))S.slotData[sl]=S.slotData[sl].filter(function(r){return fechaDiaR(r)!==d;});
+    var has=S.rows.some(function(r){return r.slot===sl;});
+    S.slotLoaded[sl]=has;S.slotSaved[sl]=false;
+    if(!has)S.slotData[sl]=[];
+  });
+  if(!S.rows.length)S._clearedAt=Date.now();
+}
 function btnGuardarAvance(){
-  if(!SEC.notif.rows.length){toast('No hay datos para guardar','warn');return;}
-  var rows=SEC.notif.rows;
+  var d=curDay();
+  var rows=viewRows();
+  if(!d||!rows.length){toast('No hay datos para guardar','warn');return;}
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
   var hoy=todayStr();
-  SEC.notif._avances=SEC.notif._avances||[];
-  // UN avance por cada fecha de notificación (29/09 y 30/09 ya no se mezclan).
-  // Id determinístico por fecha de notificación: guardar de nuevo el mismo día
-  // de datos actualiza ese avance en vez de duplicarlo, y dos personas que
-  // guardan la misma fecha lo fusionan en el mismo registro en el servidor.
-  var dias=fechasDe(rows);
+  var S=SEC.notif;
+  S._avances=S._avances||[];
   var total=rows.length,valOk=rows.filter(function(r){return r.val_ok;}).length;
   var pct=total?Math.round(valOk/total*100):0;
-  var baseAv={ts:Date.now(),fecha:hoy,hora:hora,
-    slotLoaded:JSON.parse(JSON.stringify(SEC.notif.slotLoaded)),
-    slotData:JSON.parse(JSON.stringify(SEC.notif.slotData))};
-  dias.forEach(function(d){
-    var rs=JSON.parse(JSON.stringify(rows.filter(function(r){return fechaDiaR(r)===d;})));
-    var avPayload=mkAvDia(baseAv,d,rs);
-    var ix=-1;
-    SEC.notif._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
-    if(ix>=0)SEC.notif._avances[ix]=avPayload;else SEC.notif._avances.push(avPayload);
+  // Solo se guarda el día que TÚ estás viendo; los demás días y las demás
+  // personas no se ven afectados. Id determinístico por fecha de notificación.
+  var sl={},sd={};
+  (S.slots||[]).forEach(function(k){
+    sl[k]=rows.some(function(r){return r.slot===k;});
+    sd[k]=JSON.parse(JSON.stringify((S.slotData[k]||[]).filter(function(r){return fechaDiaR(r)===d;})));
   });
-  updateAvancePill();
-  // Clear view to allow new reports
-  SEC.notif.rows=[];
-  SEC.notif._clearedAt=Date.now();
-  SEC.notif.slots.forEach(function(s){
-    SEC.notif.slotData[s]=[];
-    SEC.notif.slotLoaded[s]=false;
-    SEC.notif.slotSaved[s]=false;
-  });
-  // IMPORTANTE: un solo guardado (local + Firebase), con el estado YA final
-  // (avance agregado + tabla vacía). Antes había un lsSave() aquí Y otro más
-  // arriba (con las 94 filas todavía puestas, antes de limpiar) — eso lanzaba
-  // DOS transacciones de Firestore casi en paralelo contra el mismo documento:
-  // una con la tabla llena y otra con la tabla vacía. Si la de "tabla llena"
-  // tardaba un poco más en confirmar en el servidor (common con la red), su
-  // resultado llegaba DESPUÉS y pisaba el vaciado recién guardado — por eso
-  // la data "revivía" y parecía que Guardar avance no limpiaba nada. Con un
-  // solo guardado no hay dos transacciones compitiendo por el mismo doc.
+  var baseAv={ts:Date.now(),fecha:hoy,hora:hora,slotLoaded:sl,slotData:sd};
+  var avPayload=mkAvDia(baseAv,d,JSON.parse(JSON.stringify(rows)));
+  var ix=-1;
+  S._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
+  if(ix>=0)S._avances[ix]=avPayload;else S._avances.push(avPayload);
+  removeDayFromActive(S,d);
+  _viewDay=null;
   lsSave();
-  refreshSec('notif');renderWF('notif');
-  SEC.notif.slots.forEach(function(s){
-    var l=document.getElementById('lbl-'+s);if(l)l.classList.remove('loaded');
-    var t=document.getElementById('lbl-'+s+'-txt');if(t)t.textContent=SLOT_BASE[s];
-  });
-  toast('✅ Avance guardado'+(dias.length>1?' en '+dias.length+' fechas separadas ('+dias.join(', ')+')':'')+' — '+pct+'% completado. Puedes cargar nuevos reportes.','ok');
+  refreshSec('notif');renderWF('notif');updateAvancePill();
+  toast('✅ Avance del '+d+' guardado — '+pct+'% completado. Los demás días siguen donde estaban.','ok');
 }
 function btnRetomarAvance(id){
   var avs=SEC.notif._avances||[];
@@ -3162,59 +3209,54 @@ function btnRetomarAvance(id){
   if(!id){showAvancesList();return;}
   var idx=avs.findIndex(function(a){return String(a.id)===String(id);});
   if(idx<0){toast('No se encontró ese avance','warn');return;}
-  var av=avs[idx];
-  if(SEC.notif.rows.length){
-    if(!confirm('Ya tienes '+SEC.notif.rows.length+' registros activos sin guardar. ¿Guardarlos como avance antes de retomar "'+(av.fechaNotif||av.fecha)+'"?'))return;
-    btnGuardarAvance();
-    avs=SEC.notif._avances;
-    idx=avs.findIndex(function(a){return String(a.id)===String(id);});
-    if(idx<0){toast('No se encontró ese avance','warn');return;}
-    av=avs[idx];
-  }
-  // Restore rows from snapshot and remove it from the saved list (it's active again)
-  SEC.notif.rows=uniqRowKeys(JSON.parse(JSON.stringify(av.rows||[])));
-  if(av.slotLoaded)SEC.notif.slotLoaded=JSON.parse(JSON.stringify(av.slotLoaded));
-  if(av.slotData)SEC.notif.slotData=JSON.parse(JSON.stringify(av.slotData));
+  var av=avs[idx],S=SEC.notif;
+  // Se SUMA a lo activo (no se reemplaza nada): el trabajo de los demás días y
+  // de los demás usuarios se queda como está.
+  var have={};S.rows.forEach(function(r){have[r.key]=1;});
+  var back=uniqRowKeys(JSON.parse(JSON.stringify(av.rows||[])));
+  var nuevoDia=av.fechaNotif||av.fecha;
+  back.forEach(function(r){if(!have[r.key])S.rows.push(r);});
+  (S.slots||[]).forEach(function(k){
+    if(av.slotLoaded&&av.slotLoaded[k])S.slotLoaded[k]=true;
+    if(av.slotData&&Array.isArray(av.slotData[k])){
+      var ek={};(S.slotData[k]||[]).forEach(function(r){ek[r.key]=1;});
+      S.slotData[k]=(S.slotData[k]||[]).concat(av.slotData[k].filter(function(r){return !ek[r.key];}));
+    }
+  });
   avs.splice(idx,1);
-  // Lápida: avisa al servidor y a los demás que este avance ya volvió a ser activo
-  SEC.notif._avDel=SEC.notif._avDel||{};
-  SEC.notif._avDel[av.id]=Date.now();
-  SEC.notif._clearedAt=0;
+  S._avDel=S._avDel||{};
+  S._avDel[av.id]=Date.now();
+  S._clearedAt=0;
+  _viewDay=fechasDe(back).slice(-1)[0]||nuevoDia;
   lsSave();
-  refreshSec('notif');renderWF('notif');renderNotifTable();updateAvancePill();restoreSlotUI();
+  refreshSec('notif');renderWF('notif');updateAvancePill();restoreSlotUI();
   closeAvancesList();
-  toast('📌 Avance retomado — '+av.total+' registros restaurados','ok');
+  toast('📌 Avance retomado — '+(av.total||back.length)+' registros restaurados (solo tú ves este día)','ok');
 }
 function btnCerrarNotif(){
-  if(!SEC.notif.rows.length){toast('No hay datos para archivar','warn');return;}
-  // Archive as jornada
+  var d=curDay();
+  var rows=viewRows();
+  if(!d||!rows.length){toast('No hay datos para archivar','warn');return;}
+  var S=SEC.notif;
   var fecha=todayStr();
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
   var slots={};
-  SEC.notif.slots.forEach(function(s){
-    var recs=SEC.notif.rows.filter(function(r){return r.slot===s;});
-    slots[s]={slot:s,nombre:SLOT_BASE[s]||s,hora:hora,n:recs.length,recs:recs};
+  S.slots.forEach(function(sl){
+    var recs=rows.filter(function(r){return r.slot===sl;});
+    if(recs.length)slots[sl]={slot:sl,nombre:SLOT_BASE[sl]||sl,hora:hora,n:recs.length,recs:JSON.parse(JSON.stringify(recs))};
   });
-  SEC.notif.hist=SEC.notif.hist||{};
-  SEC.notif.hist[fecha]={fecha:fecha,cerrada:true,hora:hora,slots:slots};
-  // Clear rows (los avances guardados de otros lotes no se tocan)
-  SEC.notif.rows=[];
-  SEC.notif._clearedAt=Date.now();
-  SEC.notif.slots.forEach(function(s){
-    SEC.notif.slotData[s]=[];
-    SEC.notif.slotLoaded[s]=false;
-    SEC.notif.slotSaved[s]=false;
-  });
+  S.hist=S.hist||{};
+  var base=fecha,key=base,n=1;
+  while(S.hist[key]){n++;key=base+' ('+n+')';}
+  S.hist[key]={fecha:key,cerrada:true,hora:hora,slots:slots};
+  removeDayFromActive(S,d);
+  _viewDay=null;
   lsSave();
   updateAvancePill();
   refreshSec('notif');renderWF('notif');renderHist('notif');
   renderInd();
-  SEC.notif.slots.forEach(function(s){
-    var l=document.getElementById('lbl-'+s);if(l)l.classList.remove('loaded');
-    var t=document.getElementById('lbl-'+s+'-txt');if(t)t.textContent=SLOT_BASE[s];
-  });
-  toast('🎉 Jornada archivada correctamente','ok');
-  document.getElementById('btn-save-all').style.display='none';
+  toast('🎉 Día '+d+' archivado correctamente','ok');
+  if(!viewRows().length){var ba=document.getElementById('btn-save-all');if(ba)ba.style.display='none';}
 }
 function updateAvancePill(){
   var pill=document.getElementById('notif-avance-pill');
@@ -3223,7 +3265,7 @@ function updateAvancePill(){
   var barEl=document.getElementById('notif-avance-bar');
   var pctEl=document.getElementById('notif-avance-pct');
   var lblEl=document.getElementById('notif-avance-lbl');
-  var rows=SEC.notif.rows;
+  var rows=viewRows();
   if(rows.length){
     // Trabajando activamente — progreso en vivo
     pill.style.display='flex';
@@ -3237,7 +3279,7 @@ function updateAvancePill(){
     var nestorT=rows.filter(function(r){return r.val50==='Nestor Rossell';}).length;
     var pctVal=total?Math.round(valOk/total*100):0;
     if(lblEl)lblEl.textContent='📊 Avance en curso';
-    if(fechaEl){var _fd=fechasDe(rows);fechaEl.textContent=_fd.length?_fd.join(' + '):todayStr();}
+    if(fechaEl){fechaEl.textContent=curDay()||todayStr();}
     if(barEl)barEl.style.width=pctVal+'%';
     if(pctEl)pctEl.innerHTML=
       '<span style="margin-right:8px">Edu/Claudia: '+valOk+'/'+total+' ('+pctVal+'%)</span>'+
@@ -3309,11 +3351,11 @@ function toastSave(name){
   toast('✅ Validación de '+name+' guardada!','ok');
 }
 function allNotifLoaded(){
-  return !!(SEC.notif.slotLoaded['N1n']&&SEC.notif.slotLoaded['N2n']&&SEC.notif.slotLoaded['N3n']);
+  return !!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'));
 }
 function checkSaveReady(sec){
   if(sec!=='notif')return;
-  var rows=SEC.notif.rows;
+  var rows=viewRows();
   if(!rows.length)return;
   // Check Edu/Claudia 100%
   var eduDone=rows.every(function(r){return r.val_ok;});
@@ -3995,10 +4037,7 @@ function fbApplyIncoming(sec,gs){
     });
     Sx.rows=localRows;
   }
-  // Si llegaron filas de varios días mezcladas (datos viejos o de otro usuario),
-  // se separan: el día más reciente queda activo y los anteriores pasan a avances.
   purgeDays(Sx);
-  if(sec==='notif'&&separarDiasActivos())setTimeout(lsSave,0);
 }
 function fbApplyUpdate(silent){
   var banner=document.getElementById('gs-update-banner');
@@ -4367,6 +4406,7 @@ function ensureSecHist(){
 function restoreSlotUI(){
   ['syp','notif','sup'].forEach(function(sec){
     var S=SEC[sec];
+    if(sec==='notif'){syncNotifSlotLabels();return;}
     S.slots.forEach(function(s){
       var lbl=document.getElementById('lbl-'+s);
       var txt=document.getElementById('lbl-'+s+'-txt');
