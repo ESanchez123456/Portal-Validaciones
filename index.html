@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB23</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB24</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -584,7 +584,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 23;
+var BUILD_NUM = 24;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -778,6 +778,7 @@ function loadFile(e,tipo,slotId,sec){
   var S=SEC[sec];
   var alreadyLoaded=sec==='notif'?viewSlotLoaded(slotId):(S.slotLoaded[slotId]&&S.rows.filter(function(r){return r.slot===slotId;}).length>0);
   var uploader=S._slotUploader&&S._slotUploader[slotId];
+  if(sec==='notif'){var _vr=viewRows().filter(function(r){return r.slot===slotId&&r._up;});uploader=_vr.length?_vr[0]._up:uploader;}
   askUserAndLoad(f,tipo,slotId,sec,alreadyLoaded,uploader);
   e.target.value='';
 }
@@ -831,6 +832,7 @@ function processFile(file,tipo,slotId,sec){
       S.slotData[slotId]=nuevos;S.slotLoaded[slotId]=true;S.slotSaved[slotId]=false;
       S._slotUploader=S._slotUploader||{};
       S._slotUploader[slotId]=CURRENT_USER||'—';
+      if(sec==='notif'){var _ut=Date.now();nuevos.forEach(function(r){r._up=CURRENT_USER||'—';r._upTs=_ut;});}
       var lbl=document.getElementById('lbl-'+slotId);if(lbl)lbl.classList.add('loaded');
       var txt=document.getElementById('lbl-'+slotId+'-txt');
       if(txt)txt.textContent=SLOT_BASE[slotId]+(ag?' ('+ag+')':'')+' · '+(CURRENT_USER?CURRENT_USER.split(' ')[0]:'?');
@@ -1272,22 +1274,46 @@ function renderDayBar(){
   if(!ds.length){el.style.display='none';el.innerHTML='';return;}
   var cur=curDay();
   el.style.display='flex';
+  var det=[];
   var h='<span style="font-size:11.5px;font-weight:700;color:var(--muted)">📅 Tu vista (solo tú):</span>';
   ds.forEach(function(d){
     var rs=rows.filter(function(r){return fechaDiaR(r)===d;});
     var ok=rs.filter(function(r){return r.val_ok;}).length;
     var pct=rs.length?Math.round(ok/rs.length*100):0;
     var on=d===cur;
+    var inf=dayInfo(d),names={N1n:'Notif.1',N2n:'Notif.2',N3n:'Notif.3'};
+    var ln=Object.keys(names).map(function(k){var x=inf.slots[k];return x?'<b>'+names[k]+'</b> ✓ '+x.n+' ('+fn1(x.by)+(x.ts?' '+hhmm(x.ts):'')+')':'<span style="color:#b45309"><b>'+names[k]+'</b> falta</span>';}).join(' · ');
+    var wk=inf.active.length?'🟢 trabajando: '+inf.active.map(fn1).join(', '):(inf.lastBy?'últ. edición: '+fn1(inf.lastBy)+' '+hhmm(inf.lastTs):'sin ediciones aún');
+    det.push('<div style="font-size:11.5px;color:#464E5F;'+(on?'font-weight:600':'')+'"><b>'+d+'</b> — '+ln+' · '+wk+'</div>');
     h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+d+' · '+rs.length+' · '+pct+'%</button>';
   });
+  h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
   el.innerHTML=h;
+}
+function fn1(n){return n?String(n).split(' ')[0]:'?';}
+function hhmm(ts){return ts?new Date(ts).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}):'';}
+function dayInfo(d){
+  var rs=(SEC.notif.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
+  var slots={},ed=null,edTs=0,users={};
+  ['N1n','N2n','N3n'].forEach(function(k){
+    var x=rs.filter(function(r){return r.slot===k;});
+    if(!x.length){slots[k]=null;return;}
+    var up=x.filter(function(r){return r._up;})[0];
+    slots[k]={n:x.length,by:up?up._up:((SEC.notif._slotUploader&&SEC.notif._slotUploader[k])||''),ts:up?up._upTs:0};
+  });
+  rs.forEach(function(r){
+    if(r._by&&(r._byTs||0)>edTs){edTs=r._byTs;ed=r._by;}
+    if(r._by&&Date.now()-(r._byTs||0)<30*60000)users[r._by]=Math.max(users[r._by]||0,r._byTs);
+  });
+  return {slots:slots,lastBy:ed,lastTs:edTs,active:Object.keys(users)};
 }
 function syncNotifSlotLabels(){
   ['N1n','N2n','N3n'].forEach(function(s){
     var lbl=document.getElementById('lbl-'+s),txt=document.getElementById('lbl-'+s+'-txt');
     var n=viewRows().filter(function(r){return r.slot===s;}).length;
     if(lbl){if(n)lbl.classList.add('loaded');else lbl.classList.remove('loaded');}
-    if(txt)txt.textContent=SLOT_BASE[s]+(n?' ('+n+')':'');
+    var up=n?(viewRows().filter(function(r){return r.slot===s&&r._up;})[0]||{})._up:'';
+    if(txt)txt.textContent=SLOT_BASE[s]+(n?' ('+n+')':'')+(up?' · '+fn1(up):'');
   });
 }
 function getNotifRows(){
@@ -1377,6 +1403,7 @@ function touchFields(r,fields){
   r._fieldTs=r._fieldTs||{};
   var now=Math.max(Date.now(),_hlcMax+1);_hlcMax=now;
   (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
+  if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER){r._by=CURRENT_USER;r._byTs=now;}
   r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
 }
 function debounceSave(r){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
