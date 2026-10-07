@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB29</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB30</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 29;
+var BUILD_NUM = 30;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2421,21 +2421,24 @@ function renderInd(){
     // Build jornadas from hist (cerradas) + current active rows
     var jornadaMap={};
     // From hist (cerradas)
+    // Cada fila archivada se cuenta en SU fecha de notificación (no en la fecha en
+    // que se cerró la jornada): un 29/09 archivado hoy sigue siendo 29/09.
     Object.values(SEC.notif.hist||{}).forEach(function(j){
       if(!j.cerrada)return;
-      var key=j.fecha;
-      if(!jornadaMap[key])jornadaMap[key]={date:key,hora:j.hora||'',total:0,slot:{N1n:0,N2n:0,N3n:0},
-        valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:true,status:'cerrada'};
-      Object.values(j.slots).forEach(function(sl){
+      Object.values(j.slots||{}).forEach(function(sl){
         if(!sl||!sl.recs)return;
-        var slKey=sl.slot;
         sl.recs.forEach(function(r){
-          jornadaMap[key].total++;
-          jornadaMap[key].slot[slKey]=(jornadaMap[key].slot[slKey]||0)+1;
-          if(r.val_ok)jornadaMap[key].valOk++;
-          if(r.val50==='Jemima Gonzales'){jornadaMap[key].jemimaT++;if(r.jemima_ok)jornadaMap[key].jemimaOk++;}
-          if(r.val50==='Nestor Rossell'){jornadaMap[key].nestorT++;if(r.nestor_ok)jornadaMap[key].nestorOk++;}
-          if(r.val50==='Jose Gutierrez'){jornadaMap[key].joseT++;if(r.jose_ok)jornadaMap[key].joseOk++;}
+          var dia=fechaDiaR(r),key='cerr '+dia;
+          if(!jornadaMap[key])jornadaMap[key]={date:dia,sk:fechaSortKey(dia),hora:j.hora||'',total:0,slot:{N1n:0,N2n:0,N3n:0},
+            valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:true,status:'cerrada'};
+          var J=jornadaMap[key];
+          J.total++;
+          var slKey=r.slot||sl.slot;
+          J.slot[slKey]=(J.slot[slKey]||0)+1;
+          if(r.val_ok)J.valOk++;
+          if(r.val50==='Jemima Gonzales'){J.jemimaT++;if(r.jemima_ok)J.jemimaOk++;}
+          if(r.val50==='Nestor Rossell'){J.nestorT++;if(r.nestor_ok)J.nestorOk++;}
+          if(r.val50==='Jose Gutierrez'){J.joseT++;if(r.jose_ok)J.joseOk++;}
         });
       });
     });
