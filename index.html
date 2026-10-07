@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB27</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB28</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 27;
+var BUILD_NUM = 28;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1256,8 +1256,10 @@ function renderNotifTable(){
 var _viewDay=null;
 try{_viewDay=sessionStorage.getItem('tracker_view_day')||null;}catch(e){}
 function setViewDayVar(d){_viewDay=d;try{if(d)sessionStorage.setItem('tracker_view_day',d);else sessionStorage.removeItem('tracker_view_day');}catch(e){}}
+var NUEVO='__nuevo__'; // vista vacía para cargar nuevos reportes (solo local)
 function curDay(){
   var ds=fechasDe(SEC.notif.rows||[]);
+  if(_viewDay===NUEVO)return NUEVO;
   if(!ds.length)return null;
   // Tu día elegido se respeta SIEMPRE: si por un instante no está en los datos
   // (sincronización a medias) no se sobrescribe la elección, solo se muestra el
@@ -1272,7 +1274,7 @@ function curDay(){
 function setViewDay_(d){setViewDayVar(d);}
 function viewRows(){
   var d=curDay();
-  if(!d)return [];
+  if(!d||d===NUEVO)return [];
   return SEC.notif.rows.filter(function(r){return fechaDiaR(r)===d;});
 }
 function viewSlotLoaded(s){return viewRows().some(function(r){return r.slot===s;});}
@@ -1285,10 +1287,11 @@ function setViewDay(d){
 function renderDayBar(){
   var el=document.getElementById('notif-day-bar');if(!el)return;
   var rows=SEC.notif.rows||[],ds=fechasDe(rows);
-  if(!ds.length){el.style.display='none';el.innerHTML='';var ob=document.getElementById('notif-owner-banner');if(ob)ob.style.display='none';return;}
+  if(!ds.length&&curDay()!==NUEVO){el.style.display='none';el.innerHTML='';var ob=document.getElementById('notif-owner-banner');if(ob)ob.style.display='none';return;}
   var cur=curDay();
   el.style.display='flex';
   var det=[];
+  var _nuevoOn=cur===NUEVO;
   var h='<span style="font-size:11.5px;font-weight:700;color:var(--muted)">📅 Tu vista (solo tú):</span>';
   ds.forEach(function(d){
     var rs=rows.filter(function(r){return fechaDiaR(r)===d;});
@@ -1302,6 +1305,7 @@ function renderDayBar(){
     det.push('<div style="font-size:11.5px;color:#464E5F;'+(on?'font-weight:600':'')+'"><b>'+d+'</b> — '+ln+' · '+wk+'</div>');
     h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+(dayOwner(d)?(dayOwner(d).by===CURRENT_USER?'✋ ':'🔒 '):'')+d+' · '+rs.length+' · '+pct+'%'+(dayOwner(d)&&dayOwner(d).by!==CURRENT_USER?' · '+esc(fn1(dayOwner(d).by)):'')+'</button>';
   });
+  h+='<button class="btn" onclick="setViewDay(NUEVO)" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px dashed '+(_nuevoOn?'#1BC5BD':'var(--border)')+';background:'+(_nuevoOn?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">➕ Cargar nuevo día</button>';
   h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
   el.innerHTML=h;
   renderOwnerBanner();
@@ -1359,6 +1363,7 @@ function renderOwnerBanner(){
   var el=document.getElementById('notif-owner-banner');if(!el)return;
   var d=curDay();
   if(!d){el.style.display='none';return;}
+  if(d===NUEVO){el.style.cssText='display:flex;align-items:center;gap:12px;margin:6px 0;padding:8px 14px;border-radius:8px;font-size:12.5px;background:#e6fffa;border:1px solid #1BC5BD';el.innerHTML='<span>➕ <b>Pantalla limpia.</b> Carga Notif. 1, 2 y 3 del nuevo día; los otros días siguen guardados y se ven con los botones de arriba.</span>';return;}
   var o=dayOwner(d),st,bg,bd,btn='';
   if(o&&o.by!==CURRENT_USER){
     st='🔒 <b>'+esc(fn1(o.by))+'</b> está trabajando el <b>'+d+'</b> ('+haceMin(o.ts)+'). Estás en <b>modo lectura</b> para no pisar su trabajo (solo puedes marcar tu casilla de revisión 50%).';
@@ -1554,12 +1559,19 @@ function refreshSec(sec){
       var joseN=VR.filter(function(r){return r.val50==='Jose Gutierrez';}).length;
       var jemimaV50=VR.filter(function(r){return r.val50==='Jemima Gonzales';}).length;
       var nestorV50=VR.filter(function(r){return r.val50==='Nestor Rossell';}).length;
+      function _rdone(nm,f){var x=VR.filter(function(r){return r.val50===nm;});return x.length>0&&x.every(function(r){return r[f];});}
       var reviewers=[
         {name:'Edu / Claudia', n:total, role:'Validan 100% (uno o ambos)', color:'#042433', bg:'#eef1f5'},
         {name:'Jose Gutierrez',  n:joseN,     role:'Revisión 50% cruzada',  color:'#744210', bg:'#fefce8'},
         {name:'Jemima Gonzales', n:jemimaV50, role:'Revisión 50% cruzada',  color:'#553c9a', bg:'#f5f3ff'},
         {name:'Nestor Rossell',  n:nestorV50, role:'Revisión 50% cruzada',  color:'#744210', bg:'#fffbeb'}
-      ];
+      ].filter(function(rv){
+        // quien ya terminó su revisión al 100% deja de aparecer
+        if(rv.name==='Jose Gutierrez')return !_rdone('Jose Gutierrez','jose_ok');
+        if(rv.name==='Jemima Gonzales')return !_rdone('Jemima Gonzales','jemima_ok');
+        if(rv.name==='Nestor Rossell')return !_rdone('Nestor Rossell','nestor_ok');
+        return true;
+      });
       leyendaCards.innerHTML=reviewers.map(function(rv){
         var isV50=rv.role.indexOf('50%')>=0;
         var filterVal=isV50?rv.name:'';
@@ -2618,12 +2630,13 @@ function renderInd(){
         '<th style="padding:6px 9px;min-width:160px">Tipificación</th>'+
         '<th style="padding:6px 9px;min-width:160px">Subtipificación</th>'+
         '<th style="padding:6px 9px;min-width:180px">Obs. validación</th>'+
-        '<th style="padding:6px 9px;min-width:90px">Revisor</th>'+
+        '<th style="padding:6px 9px;min-width:110px">Responsable de agendar</th>'+
         '<th style="padding:6px 9px;min-width:110px">Identificó el error</th>'+
       '</tr></thead><tbody>';
     detRows.forEach(function(r,i){
-      var vc=v50Badge[r.val50];
-      var revBadge=vc?'<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:'+vc.bg+';color:'+vc.fg+'">'+esc(r.val50.split(' ')[0])+'</span>':'<span style="color:var(--muted)">—</span>';
+      var _ag=agendaDe(r);
+      var vc=v50Badge[_ag];
+      var revBadge=_ag?'<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:'+(vc?vc.bg:'#eef1f5')+';color:'+(vc?vc.fg:'#042433')+'">'+esc(_ag.split(' ')[0])+'</span>':'<span style="color:var(--muted)">—</span>';
       notifH+='<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
         '<td style="padding:5px 9px;white-space:nowrap;color:var(--muted)">'+esc(r.fc2||'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc((r.desc||'').slice(0,90))+((r.desc||'').length>90?'…':'')+'</td>'+
@@ -3311,10 +3324,10 @@ function btnGuardarAvance(){
   S._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
   if(ix>=0)S._avances[ix]=avPayload;else S._avances.push(avPayload);
   removeDayFromActive(S,d);releaseDay(d);
-  setViewDayVar(null);
+  setViewDayVar(NUEVO);
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();
-  toast('✅ Avance del '+d+' guardado — '+pct+'% completado. Los demás días siguen donde estaban.','ok');
+  toast('✅ Avance del '+d+' guardado — '+pct+'% completado. Pantalla limpia: ya puedes cargar Notif. 1, 2 y 3 del siguiente día.','ok');
 }
 function btnRetomarAvance(id){
   var avs=SEC.notif._avances||[];
@@ -3364,7 +3377,7 @@ function btnCerrarNotif(){
   while(S.hist[key]){n++;key=base+' ('+n+')';}
   S.hist[key]={fecha:key,cerrada:true,hora:hora,slots:slots};
   removeDayFromActive(S,d);releaseDay(d);
-  setViewDayVar(null);
+  setViewDayVar(NUEVO);
   lsSave();
   updateAvancePill();
   refreshSec('notif');renderWF('notif');renderHist('notif');
@@ -3397,9 +3410,9 @@ function updateAvancePill(){
     if(barEl)barEl.style.width=pctVal+'%';
     if(pctEl)pctEl.innerHTML=
       '<span style="margin-right:8px">Edu/Claudia: '+valOk+'/'+total+' ('+pctVal+'%)</span>'+
-      (joseT?'<span style="margin-right:8px;color:#744210">Jose: '+joseOk+'/'+joseT+'</span>':'')+
-      (jemimaT?'<span style="margin-right:8px;color:#553c9a">Jemima: '+jemimaOk+'/'+jemimaT+'</span>':'')+
-      (nestorT?'<span style="color:#b45309">Nestor: '+nestorOk+'/'+nestorT+'</span>':'');
+      (joseT&&joseOk<joseT?'<span style="margin-right:8px;color:#744210">Jose: '+joseOk+'/'+joseT+'</span>':'')+
+      (jemimaT&&jemimaOk<jemimaT?'<span style="margin-right:8px;color:#553c9a">Jemima: '+jemimaOk+'/'+jemimaT+'</span>':'')+
+      (nestorT&&nestorOk<nestorT?'<span style="color:#b45309">Nestor: '+nestorOk+'/'+nestorT+'</span>':'');
     return;
   }
   // Sin trabajo activo: mostrar resumen de avances guardados (si hay)
@@ -4252,13 +4265,18 @@ function fbStartListeners(){
     });
   },45000);
 }
+// Quién tenía que agendar la resolución: el paralegal del responsable (Jemima/Nestor);
+// si no hay, el propio responsable del proceso. (No es el revisor del 50%.)
+function agendaDe(r){
+  return r.paralegal||getParalegalByResp(r.resp)||r._detectedParalegal||r.resp||'';
+}
 function exportOmisionesExcel(){
   var rows=window._lastOmisionesRows||[];
   if(!rows.length){toast('No hay omisiones para exportar','warn');return;}
   var wb=XLSX.utils.book_new();
-  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Revisor','Identificó el error','Remitente']];
+  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Responsable de agendar','Identificó el error','Remitente']];
   rows.forEach(function(r){
-    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',r.val50||'',identCorto(r.ident),refLabel(r.referencia)]);
+    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',agendaDe(r),identCorto(r.ident),refLabel(r.referencia)]);
   });
   var ws=XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols']=[{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16},{wch:18},{wch:20}];
