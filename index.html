@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB28</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB29</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 28;
+var BUILD_NUM = 29;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1299,14 +1299,14 @@ function renderDayBar(){
     var pct=rs.length?Math.round(ok/rs.length*100):0;
     var on=d===cur;
     var inf=dayInfo(d),names={N1n:'Notif.1',N2n:'Notif.2',N3n:'Notif.3'};
-    var ln=Object.keys(names).map(function(k){var x=inf.slots[k];return x?'<b>'+names[k]+'</b> ✓ '+x.n+' ('+fn1(x.by)+(x.ts?' '+hhmm(x.ts):'')+')':'<span style="color:#b45309"><b>'+names[k]+'</b> falta</span>';}).join(' · ');
+    var ln=Object.keys(names).map(function(k){var x=inf.slots[k];return x?'<b>'+names[k]+'</b> ✓ '+x.n+(x.by?' ('+fn1(x.by)+(x.ts?' '+hhmm(x.ts):'')+')':''):'<span style="color:#b45309"><b>'+names[k]+'</b> falta</span>';}).join(' · ');
     var ow=dayOwner(d);
     var wk=ow?'👤 <b>lo trabaja '+esc(fn1(ow.by))+'</b> ('+haceMin(ow.ts)+')':'🟢 libre'+(inf.lastBy?' · últ. edición: '+fn1(inf.lastBy)+' '+hhmm(inf.lastTs):'');
-    det.push('<div style="font-size:11.5px;color:#464E5F;'+(on?'font-weight:600':'')+'"><b>'+d+'</b> — '+ln+' · '+wk+'</div>');
+    if(!dayDone(d))det.push('<div style="font-size:11.5px;color:#464E5F;'+(on?'font-weight:600':'')+'"><b>'+d+'</b> — '+ln+' · '+wk+'</div>');
     h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+(dayOwner(d)?(dayOwner(d).by===CURRENT_USER?'✋ ':'🔒 '):'')+d+' · '+rs.length+' · '+pct+'%'+(dayOwner(d)&&dayOwner(d).by!==CURRENT_USER?' · '+esc(fn1(dayOwner(d).by)):'')+'</button>';
   });
   h+='<button class="btn" onclick="setViewDay(NUEVO)" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px dashed '+(_nuevoOn?'#1BC5BD':'var(--border)')+';background:'+(_nuevoOn?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">➕ Cargar nuevo día</button>';
-  h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
+  if(det.length)h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
   el.innerHTML=h;
   renderOwnerBanner();
 }
@@ -1380,6 +1380,13 @@ function renderOwnerBanner(){
 }
 function fn1(n){return n?String(n).split(' ')[0]:'?';}
 function hhmm(ts){return ts?new Date(ts).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}):'';}
+function dayDone(d){
+  var rs=(SEC.notif.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
+  if(!rs.length)return false;
+  if(!rs.every(function(r){return r.val_ok;}))return false;
+  var rv={'Jose Gutierrez':'jose_ok','Jemima Gonzales':'jemima_ok','Nestor Rossell':'nestor_ok'};
+  return Object.keys(rv).every(function(nm){var x=rs.filter(function(r){return r.val50===nm;});return x.every(function(r){return r[rv[nm]];});});
+}
 function dayInfo(d){
   var rs=(SEC.notif.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
   var slots={},ed=null,edTs=0,users={};
@@ -1559,19 +1566,12 @@ function refreshSec(sec){
       var joseN=VR.filter(function(r){return r.val50==='Jose Gutierrez';}).length;
       var jemimaV50=VR.filter(function(r){return r.val50==='Jemima Gonzales';}).length;
       var nestorV50=VR.filter(function(r){return r.val50==='Nestor Rossell';}).length;
-      function _rdone(nm,f){var x=VR.filter(function(r){return r.val50===nm;});return x.length>0&&x.every(function(r){return r[f];});}
       var reviewers=[
         {name:'Edu / Claudia', n:total, role:'Validan 100% (uno o ambos)', color:'#042433', bg:'#eef1f5'},
         {name:'Jose Gutierrez',  n:joseN,     role:'Revisión 50% cruzada',  color:'#744210', bg:'#fefce8'},
         {name:'Jemima Gonzales', n:jemimaV50, role:'Revisión 50% cruzada',  color:'#553c9a', bg:'#f5f3ff'},
         {name:'Nestor Rossell',  n:nestorV50, role:'Revisión 50% cruzada',  color:'#744210', bg:'#fffbeb'}
-      ].filter(function(rv){
-        // quien ya terminó su revisión al 100% deja de aparecer
-        if(rv.name==='Jose Gutierrez')return !_rdone('Jose Gutierrez','jose_ok');
-        if(rv.name==='Jemima Gonzales')return !_rdone('Jemima Gonzales','jemima_ok');
-        if(rv.name==='Nestor Rossell')return !_rdone('Nestor Rossell','nestor_ok');
-        return true;
-      });
+      ];
       leyendaCards.innerHTML=reviewers.map(function(rv){
         var isV50=rv.role.indexOf('50%')>=0;
         var filterVal=isV50?rv.name:'';
@@ -3410,9 +3410,9 @@ function updateAvancePill(){
     if(barEl)barEl.style.width=pctVal+'%';
     if(pctEl)pctEl.innerHTML=
       '<span style="margin-right:8px">Edu/Claudia: '+valOk+'/'+total+' ('+pctVal+'%)</span>'+
-      (joseT&&joseOk<joseT?'<span style="margin-right:8px;color:#744210">Jose: '+joseOk+'/'+joseT+'</span>':'')+
-      (jemimaT&&jemimaOk<jemimaT?'<span style="margin-right:8px;color:#553c9a">Jemima: '+jemimaOk+'/'+jemimaT+'</span>':'')+
-      (nestorT&&nestorOk<nestorT?'<span style="color:#b45309">Nestor: '+nestorOk+'/'+nestorT+'</span>':'');
+      (joseT?'<span style="margin-right:8px;color:#744210">Jose: '+joseOk+'/'+joseT+'</span>':'')+
+      (jemimaT?'<span style="margin-right:8px;color:#553c9a">Jemima: '+jemimaOk+'/'+jemimaT+'</span>':'')+
+      (nestorT?'<span style="color:#b45309">Nestor: '+nestorOk+'/'+nestorT+'</span>':'');
     return;
   }
   // Sin trabajo activo: mostrar resumen de avances guardados (si hay)
