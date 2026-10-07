@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB26</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB27</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 26;
+var BUILD_NUM = 27;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -856,7 +856,7 @@ function processFile(file,tipo,slotId,sec){
       var _sepMsg='';
       if(sec==='notif'){
         var _nds=fechasDe(nuevos);
-        if(_nds.length&&_nds.indexOf(curDay())<0)_viewDay=_nds[_nds.length-1];
+        if(_nds.length&&_nds.indexOf(curDay())<0)setViewDayVar(_nds[_nds.length-1]);
         if(_nds.length>1)_sepMsg=' · el archivo trae '+_nds.length+' fechas ('+_nds.join(', ')+'); cambia de día con los botones 📅';
       }
       refreshSec(sec);renderWF(sec);
@@ -1254,13 +1254,22 @@ function renderNotifTable(){
 // persona ve el día que ELIGE. Que otra persona cambie de día, cargue otro
 // reporte o guarde un avance NO mueve tu vista.
 var _viewDay=null;
+try{_viewDay=sessionStorage.getItem('tracker_view_day')||null;}catch(e){}
+function setViewDayVar(d){_viewDay=d;try{if(d)sessionStorage.setItem('tracker_view_day',d);else sessionStorage.removeItem('tracker_view_day');}catch(e){}}
 function curDay(){
   var ds=fechasDe(SEC.notif.rows||[]);
   if(!ds.length)return null;
+  // Tu día elegido se respeta SIEMPRE: si por un instante no está en los datos
+  // (sincronización a medias) no se sobrescribe la elección, solo se muestra el
+  // día más reciente mientras tanto.
   if(_viewDay&&ds.indexOf(_viewDay)>=0)return _viewDay;
-  _viewDay=ds[ds.length-1];
+  if(_viewDay)return ds[ds.length-1];
+  // Sin elección previa: el día que ya trabajas tú; si no, el más reciente
+  var mine=ds.filter(function(d){var o=dayOwner(d);return o&&o.by===CURRENT_USER;});
+  setViewDay_(mine.length?mine[mine.length-1]:ds[ds.length-1]);
   return _viewDay;
 }
+function setViewDay_(d){setViewDayVar(d);}
 function viewRows(){
   var d=curDay();
   if(!d)return [];
@@ -1268,7 +1277,7 @@ function viewRows(){
 }
 function viewSlotLoaded(s){return viewRows().some(function(r){return r.slot===s;});}
 function setViewDay(d){
-  _viewDay=d;
+  setViewDayVar(d);
   refreshSec('notif');renderWF('notif');
   var tb=document.getElementById('tbody-notif');
   if(tb&&tb.parentNode&&tb.parentNode.scrollIntoView){}
@@ -3302,7 +3311,7 @@ function btnGuardarAvance(){
   S._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
   if(ix>=0)S._avances[ix]=avPayload;else S._avances.push(avPayload);
   removeDayFromActive(S,d);releaseDay(d);
-  _viewDay=null;
+  setViewDayVar(null);
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();
   toast('✅ Avance del '+d+' guardado — '+pct+'% completado. Los demás días siguen donde estaban.','ok');
@@ -3331,7 +3340,7 @@ function btnRetomarAvance(id){
   S._avDel=S._avDel||{};
   S._avDel[av.id]=Date.now();
   S._clearedAt=0;
-  _viewDay=fechasDe(back).slice(-1)[0]||nuevoDia;claimDay(_viewDay);
+  setViewDayVar(fechasDe(back).slice(-1)[0]||nuevoDia);claimDay(_viewDay);
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();restoreSlotUI();
   closeAvancesList();
@@ -3355,7 +3364,7 @@ function btnCerrarNotif(){
   while(S.hist[key]){n++;key=base+' ('+n+')';}
   S.hist[key]={fecha:key,cerrada:true,hora:hora,slots:slots};
   removeDayFromActive(S,d);releaseDay(d);
-  _viewDay=null;
+  setViewDayVar(null);
   lsSave();
   updateAvancePill();
   refreshSec('notif');renderWF('notif');renderHist('notif');
@@ -4095,7 +4104,16 @@ function fbApplyIncoming(sec,gs){
   // perder un avance recién guardado aquí que el servidor aún no devuelve)
   Sx._avDel=mergeAvDel(Sx._avDel,gs._avDel);
   Sx._dayDel=mergeAvDel(Sx._dayDel,gs._dayDel);
+  var _ownPrev=JSON.parse(JSON.stringify(Sx._dayOwner||{}));
   Sx._dayOwner=mergeOwners(Sx._dayOwner,gs._dayOwner);
+  if(sec==='notif'&&typeof CURRENT_USER!=='undefined'){
+    Object.keys(Sx._dayOwner).forEach(function(dd){
+      var n=Sx._dayOwner[dd],o=_ownPrev[dd];
+      if(n&&n.by&&n.by!==CURRENT_USER&&Date.now()-(n.ts||0)<OWNER_TTL&&(!o||o.by!==n.by||!o.by)){
+        toast('👤 '+fn1(n.by)+' tomó el día '+dd+(dd===_viewDay?' (lo estás viendo en modo lectura)':'. Tu vista no cambia.'),'warn');
+      }
+    });
+  }
   var avById={};
   avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
   avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
