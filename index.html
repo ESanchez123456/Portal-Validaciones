@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB24</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB25</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -321,6 +321,7 @@ tr:hover td{background:#f7faff}
     <div class="wf-wrap" id="wfbar-notif"></div>
   </div>
     <!-- 4ta píldora: avance guardado -->
+    <div id="notif-owner-banner" style="display:none"></div>
     <div id="notif-day-bar" style="display:none;margin:8px 0;gap:8px;align-items:center;flex-wrap:wrap"></div>
     <div id="notif-avance-pill" style="display:none;margin:8px 0;padding:10px 16px;background:#fff;border:2px solid #1BC5BD;border-radius:10px;align-items:center;gap:12px;flex-wrap:wrap">
       <span id="notif-avance-lbl" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#1BC5BD">📌 Avances guardados</span>
@@ -584,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 24;
+var BUILD_NUM = 25;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -824,6 +825,10 @@ function processFile(file,tipo,slotId,sec){
       if(sec==='notif'){
         // Solo se reemplaza lo MISMO slot + MISMOS días del archivo; los demás días no se tocan.
         var _nd={};nuevos.forEach(function(r){_nd[fechaDiaR(r)]=1;});
+        var _blk=null;
+        Object.keys(_nd).forEach(function(dd){var o=lockedByOther(dd);if(o&&S.rows.some(function(r){return r.slot===slotId&&fechaDiaR(r)===dd;}))_blk={d:dd,o:o};});
+        if(_blk){toast('🔒 No se cargó: '+fn1(_blk.o.by)+' está trabajando el '+_blk.d+' y ese reporte ya existe. Pídele que lo libere o usa "Tomar el día".','warn');return;}
+        Object.keys(_nd).forEach(function(dd){claimDay(dd);});
         S.rows=S.rows.filter(function(r){return !(r.slot===slotId&&_nd[fechaDiaR(r)]);});
       }else S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
@@ -1271,7 +1276,7 @@ function setViewDay(d){
 function renderDayBar(){
   var el=document.getElementById('notif-day-bar');if(!el)return;
   var rows=SEC.notif.rows||[],ds=fechasDe(rows);
-  if(!ds.length){el.style.display='none';el.innerHTML='';return;}
+  if(!ds.length){el.style.display='none';el.innerHTML='';var ob=document.getElementById('notif-owner-banner');if(ob)ob.style.display='none';return;}
   var cur=curDay();
   el.style.display='flex';
   var det=[];
@@ -1283,12 +1288,79 @@ function renderDayBar(){
     var on=d===cur;
     var inf=dayInfo(d),names={N1n:'Notif.1',N2n:'Notif.2',N3n:'Notif.3'};
     var ln=Object.keys(names).map(function(k){var x=inf.slots[k];return x?'<b>'+names[k]+'</b> ✓ '+x.n+' ('+fn1(x.by)+(x.ts?' '+hhmm(x.ts):'')+')':'<span style="color:#b45309"><b>'+names[k]+'</b> falta</span>';}).join(' · ');
-    var wk=inf.active.length?'🟢 trabajando: '+inf.active.map(fn1).join(', '):(inf.lastBy?'últ. edición: '+fn1(inf.lastBy)+' '+hhmm(inf.lastTs):'sin ediciones aún');
+    var ow=dayOwner(d);
+    var wk=ow?'👤 <b>lo trabaja '+esc(fn1(ow.by))+'</b> ('+haceMin(ow.ts)+')':'🟢 libre'+(inf.lastBy?' · últ. edición: '+fn1(inf.lastBy)+' '+hhmm(inf.lastTs):'');
     det.push('<div style="font-size:11.5px;color:#464E5F;'+(on?'font-weight:600':'')+'"><b>'+d+'</b> — '+ln+' · '+wk+'</div>');
-    h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+d+' · '+rs.length+' · '+pct+'%</button>';
+    h+='<button class="btn" onclick="setViewDay(\''+d+'\')" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px solid '+(on?'#1BC5BD':'var(--border)')+';background:'+(on?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">'+(dayOwner(d)?(dayOwner(d).by===CURRENT_USER?'✋ ':'🔒 '):'')+d+' · '+rs.length+' · '+pct+'%'+(dayOwner(d)&&dayOwner(d).by!==CURRENT_USER?' · '+esc(fn1(dayOwner(d).by)):'')+'</button>';
   });
   h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
   el.innerHTML=h;
+  renderOwnerBanner();
+}
+// ── Dueño del día: quién está trabajando cada día (compartido) ──
+// S._dayOwner[fecha]={by,ts}. Se toma al editar/cargar/retomar ese día y se
+// refresca con cada edición; si pasan OWNER_TTL sin actividad queda libre.
+// Los demás pueden VER el día pero no editarlo (salvo "Tomar el día").
+var OWNER_TTL=15*60000;
+function dayOwner(d){
+  var o=(SEC.notif._dayOwner||{})[d];
+  if(!o||!o.by||Date.now()-(o.ts||0)>OWNER_TTL)return null;
+  return o;
+}
+function lockedByOther(d){var o=d&&dayOwner(d);return(o&&o.by!==CURRENT_USER)?o:null;}
+function claimDay(d,force){
+  if(!d)return false;
+  var S=SEC.notif;S._dayOwner=S._dayOwner||{};
+  var o=dayOwner(d);
+  if(o&&o.by!==CURRENT_USER&&!force)return false;
+  S._dayOwner[d]={by:CURRENT_USER||'—',ts:Date.now()};
+  return true;
+}
+function releaseDay(d){var S=SEC.notif;S._dayOwner=S._dayOwner||{};S._dayOwner[d]={by:'',ts:Date.now()};}
+function haceMin(ts){var m=Math.max(0,Math.round((Date.now()-ts)/60000));return m<1?'hace instantes':'hace '+m+' min';}
+function tomarDia(){
+  var d=curDay();if(!d)return;
+  var o=lockedByOther(d);
+  if(o&&!confirm(fn1(o.by)+' está trabajando el '+d+' ('+haceMin(o.ts)+'). ¿Tomar el día de todos modos? Esa persona pasará a modo lectura.'))return;
+  claimDay(d,true);lsSave();refreshSec('notif');
+  toast('✋ Ahora tú trabajas el '+d,'ok');
+}
+function liberarDia(){
+  var d=curDay();if(!d)return;
+  releaseDay(d);lsSave();refreshSec('notif');
+  toast('Día '+d+' liberado','ok');
+}
+var _lockToastTs=0;
+['mousedown','click','keydown','paste'].forEach(function(ev){
+  document.addEventListener(ev,function(e){
+    var tb=document.getElementById('tbody-notif');
+    if(!tb||!tb.contains(e.target))return;
+    var d=curDay(),o=lockedByOther(d);
+    if(!o)return;
+    var t=e.target;
+    if(!t.closest||!t.closest('input,select,textarea'))return;
+    if(ev==='keydown'&&(e.key==='Tab'||e.key.indexOf('Arrow')===0))return;
+    e.preventDefault();e.stopPropagation();
+    if(Date.now()-_lockToastTs>2500){_lockToastTs=Date.now();toast('🔒 '+fn1(o.by)+' está trabajando el '+d+'. Estás en modo lectura (usa "Tomar el día" si hace falta).','warn');}
+  },true);
+});
+function renderOwnerBanner(){
+  var el=document.getElementById('notif-owner-banner');if(!el)return;
+  var d=curDay();
+  if(!d){el.style.display='none';return;}
+  var o=dayOwner(d),st,bg,bd,btn='';
+  if(o&&o.by!==CURRENT_USER){
+    st='🔒 <b>'+esc(fn1(o.by))+'</b> está trabajando el <b>'+d+'</b> ('+haceMin(o.ts)+'). Estás en <b>modo lectura</b> para no pisar su trabajo.';
+    bg='#fff5f5';bd='#fc8181';btn='<button class="btn" onclick="tomarDia()" style="padding:5px 12px">✋ Tomar el día</button>';
+  }else if(o){
+    st='✋ <b>Tú</b> estás trabajando el <b>'+d+'</b>. Los demás lo ven en modo lectura.';
+    bg='#f0fff4';bd='#68d391';btn='<button class="btn" onclick="liberarDia()" style="padding:5px 12px">Liberar día</button>';
+  }else{
+    st='🟢 El <b>'+d+'</b> está libre. Se te asigna automáticamente cuando edites o cargues algo.';
+    bg='#f7f9fb';bd='var(--border)';btn='<button class="btn" onclick="tomarDia()" style="padding:5px 12px">✋ Trabajar este día</button>';
+  }
+  el.style.cssText='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;padding:8px 14px;border-radius:8px;font-size:12.5px;background:'+bg+';border:1px solid '+bd;
+  el.innerHTML='<span>'+st+'</span>'+btn;
 }
 function fn1(n){return n?String(n).split(' ')[0]:'?';}
 function hhmm(ts){return ts?new Date(ts).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}):'';}
@@ -1404,6 +1476,7 @@ function touchFields(r,fields){
   var now=Math.max(Date.now(),_hlcMax+1);_hlcMax=now;
   (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
   if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER){r._by=CURRENT_USER;r._byTs=now;}
+  if(/^N\dn$/.test(r.slot||''))claimDay(fechaDiaR(r),true);
   r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
 }
 function debounceSave(r){clearTimeout(_lsTimer);_lsTimer=setTimeout(lsSave,1500);}
@@ -3206,6 +3279,7 @@ function btnGuardarAvance(){
   var d=curDay();
   var rows=viewRows();
   if(!d||!rows.length){toast('No hay datos para guardar','warn');return;}
+  var _lo=lockedByOther(d);if(_lo){toast('🔒 '+fn1(_lo.by)+' está trabajando el '+d+'. Solo quien lo trabaja puede guardarlo (o usa "Tomar el día").','warn');return;}
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
   var hoy=todayStr();
   var S=SEC.notif;
@@ -3224,7 +3298,7 @@ function btnGuardarAvance(){
   var ix=-1;
   S._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
   if(ix>=0)S._avances[ix]=avPayload;else S._avances.push(avPayload);
-  removeDayFromActive(S,d);
+  removeDayFromActive(S,d);releaseDay(d);
   _viewDay=null;
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();
@@ -3254,7 +3328,7 @@ function btnRetomarAvance(id){
   S._avDel=S._avDel||{};
   S._avDel[av.id]=Date.now();
   S._clearedAt=0;
-  _viewDay=fechasDe(back).slice(-1)[0]||nuevoDia;
+  _viewDay=fechasDe(back).slice(-1)[0]||nuevoDia;claimDay(_viewDay);
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();restoreSlotUI();
   closeAvancesList();
@@ -3264,6 +3338,7 @@ function btnCerrarNotif(){
   var d=curDay();
   var rows=viewRows();
   if(!d||!rows.length){toast('No hay datos para archivar','warn');return;}
+  var _lo=lockedByOther(d);if(_lo){toast('🔒 '+fn1(_lo.by)+' está trabajando el '+d+'. Solo quien lo trabaja puede archivarlo (o usa "Tomar el día").','warn');return;}
   var S=SEC.notif;
   var fecha=todayStr();
   var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
@@ -3276,7 +3351,7 @@ function btnCerrarNotif(){
   var base=fecha,key=base,n=1;
   while(S.hist[key]){n++;key=base+' ('+n+')';}
   S.hist[key]={fecha:key,cerrada:true,hora:hora,slots:slots};
-  removeDayFromActive(S,d);
+  removeDayFromActive(S,d);releaseDay(d);
   _viewDay=null;
   lsSave();
   updateAvancePill();
@@ -3784,6 +3859,14 @@ function mergeAvDel(a,b){
 function avValidos(avs,tomb){
   return (avs||[]).filter(function(a){if(!a)return false;var t=(tomb||{})[a.id];return !(t&&(a.ts||0)<=t);});
 }
+function mergeOwners(a,b){
+  var out={};a=a||{};b=b||{};
+  Object.keys(a).concat(Object.keys(b)).forEach(function(d){
+    var x=a[d],y=b[d];
+    out[d]=!x?y:!y?x:((y.ts||0)>=(x.ts||0)?y:x);
+  });
+  return out;
+}
 function mergeSecSmartJS(old,newSec){
   if(!newSec)newSec={};
   if(!old)return newSec;
@@ -3889,6 +3972,7 @@ function mergeSecSmartJS(old,newSec){
   newSec.rows=finalRows.filter(function(r){return !archivedKeys[r.key]||oldKeyMap[r.key];});
   // Lápidas de "Borrar un día": se unen y se purga lo anterior a la lápida
   newSec._dayDel=mergeAvDel(old._dayDel,newSec._dayDel);
+  newSec._dayOwner=mergeOwners(old._dayOwner,newSec._dayOwner);
   purgeDays(newSec);
   newSec._minBuild=Math.max(old._minBuild||0,newSec._minBuild||0);
   return newSec;
@@ -4008,6 +4092,7 @@ function fbApplyIncoming(sec,gs){
   // perder un avance recién guardado aquí que el servidor aún no devuelve)
   Sx._avDel=mergeAvDel(Sx._avDel,gs._avDel);
   Sx._dayDel=mergeAvDel(Sx._dayDel,gs._dayDel);
+  Sx._dayOwner=mergeOwners(Sx._dayOwner,gs._dayOwner);
   var avById={};
   avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
   avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
@@ -4322,6 +4407,7 @@ function lsLoad(){
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
       if(d._avDel)SEC[sec]._avDel=d._avDel;
       if(d._dayDel)SEC[sec]._dayDel=d._dayDel;
+      if(d._dayOwner)SEC[sec]._dayOwner=d._dayOwner;
       if(d._avances)SEC[sec]._avances=normAvances(d._avances,d._avDel);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
