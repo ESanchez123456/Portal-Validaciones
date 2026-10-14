@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB34</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB35</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 34;
+var BUILD_NUM = 35;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -4062,6 +4062,15 @@ function nullifyUndef(obj){
   return out;
 }
 
+// slotData es una COPIA de las filas (ya están en rows / avances[].rows) que solo
+// se leía al retomar; duplicaba el tamaño del documento (~1 MB de límite en Firestore).
+// Se quita al guardar; las filas viajan una sola vez.
+function stripDupData(S){
+  if(!S||typeof S!=='object')return S;
+  delete S.slotData;
+  (S._avances||[]).forEach(function(a){if(a)delete a.slotData;});
+  return S;
+}
 var _fbSaveFailCount={syp:0,notif:0,sup:0};
 // Guardado en cola: UNA sola transacción por sección a la vez. Antes cada click de
 // checkbox lanzaba su propia transacción sobre el mismo documento; varias en
@@ -4085,6 +4094,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
   var ref=fbSecRef(sec);
   var basePayload;
   try{basePayload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
+  stripDupData(basePayload);
   if(_outdated){showOutdated();return Promise.resolve();}
   var savedAt=Date.now();
   basePayload._savedAt=savedAt;
@@ -4097,7 +4107,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
   // que fallan en silencio.
   try{
     var approxSize=JSON.stringify(basePayload).length;
-    if(approxSize>800000)toast('⚠️ La base de "'+sec+'" pesa '+Math.round(approxSize/1024)+' KB — cerca del límite de Firebase. Avísame para depurarla.','warn');
+    if(approxSize>700000)toast('⚠️ La base de "'+sec+'" pesa '+Math.round(approxSize/1024)+' KB — cerca del límite de Firebase. Avísame para depurarla.','warn');
   }catch(e){}
   return fbDb.runTransaction(function(tx){
     return tx.get(ref).then(function(doc){
@@ -4111,7 +4121,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
       // cero EN CADA invocación del callback, para que cada intento de la
       // transacción parta siempre de un snapshot limpio.
       var payload=JSON.parse(JSON.stringify(basePayload));
-      var merged=nullifyUndef(mergeSecSmartJS(old,payload));
+      var merged=nullifyUndef(stripDupData(mergeSecSmartJS(old,payload)));
       tx.set(ref,merged);
     });
   }).then(function(){
