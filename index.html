@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB37</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB38</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 37;
+var BUILD_NUM = 38;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -3962,9 +3962,9 @@ function mergeSecSmartJS(old,newSec){
     // Firestore (lo que hace que los guardados empiecen a fallar en
     // silencio). Se conservan solo las 90 jornadas más recientes.
     var histKeys=Object.keys(mergedHist);
-    if(histKeys.length>90){
+    if(histKeys.length>5000){
       histKeys.sort(); // fechas tipo DD/MM/YYYY no ordenan bien como string, pero basta para no crecer sin límite
-      histKeys.slice(0,histKeys.length-90).forEach(function(k){delete mergedHist[k];});
+      histKeys.slice(0,histKeys.length-5000).forEach(function(k){delete mergedHist[k];});
     }
     newSec.hist=mergedHist;
   }
@@ -3981,7 +3981,7 @@ function mergeSecSmartJS(old,newSec){
   mergedAv=normAvances(mergedAv,tombAll);
   // Mismo límite defensivo que hist: cada avance guarda una copia completa
   // de todas las filas. Se conservan los 60 más recientes.
-  if(mergedAv.length>60)mergedAv=mergedAv.slice(mergedAv.length-60);
+  if(mergedAv.length>5000)mergedAv=mergedAv.slice(mergedAv.length-5000);
   newSec._avances=mergedAv;
   var oldRows=uniqRowKeys(old.rows||[]);
   var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
@@ -4100,6 +4100,122 @@ function mapRowsSec(S,fn){
 }
 function packSec(S){return mapRowsSec(S,packRow);}
 function unpackSec(S){return mapRowsSec(S,unpackRow);}
+// ═══ Archivo en documentos aparte ═══════════════════════════════════════════
+// Un documento de Firestore admite máx. 1 MB. Los días guardados (_avances) y las
+// jornadas archivadas (hist) crecen sin parar, así que ya NO viven en sec_notif:
+// cada día guardado es su propio documento "nav_<id>" y cada jornada "nhist_<fecha>".
+// En memoria todo sigue igual (SEC.notif._avances / .hist), solo cambia dónde se guarda.
+// Seguridad: un avance solo se quita de sec_notif cuando su documento aparte YA se
+// escribió bien; si algo falla, sigue en sec_notif como antes (no se pierde nada).
+var _arch={avW:{},hiW:{},uav:null,uhi:null};
+_arch.p=new Promise(function(r){_arch.resolve=r;});
+function archSafe(x){return String(x).replace(/[^A-Za-z0-9_-]/g,'_');}
+function avSig(a){return a.id+'|'+(a.ts||0)+'|'+(a.total||0)+'|'+(a.valOk||0);}
+function hiSig(j){return [j.cerrada?1:0,j.hora||'',Object.keys(j.slots||{}).sort().map(function(k){var sl=j.slots[k];return k+':'+((sl&&sl.n)||0)+':'+((sl&&sl.hora)||'');}).join(',')].join('|');}
+function archSetAv(a){
+  var ref=fbDb.collection(FB_COL).doc('nav_'+a.id);
+  return fbDb.runTransaction(function(tx){return tx.get(ref).then(function(d){
+    var cp=JSON.parse(JSON.stringify(a));delete cp.slotData;
+    var old=d.exists?unpackSec({_avances:[d.data()]})._avances[0]:null;
+    if(old){delete old._savedAt;delete old.slotData;}
+    var m=old?mergeAvPair(old,cp):cp;delete m.slotData;delete m._savedAt;
+    var w=packSec({_avances:[m]})._avances[0];w._savedAt=Date.now();
+    tx.set(ref,nullifyUndef(w));
+  });});
+}
+function archSetHi(key,j){
+  var ref=fbDb.collection(FB_COL).doc('nhist_'+archSafe(key));
+  return fbDb.runTransaction(function(tx){return tx.get(ref).then(function(d){
+    var cp=JSON.parse(JSON.stringify(j));
+    var old=null;
+    if(d.exists){var o={hist:{k:d.data()}};unpackSec(o);old=o.hist.k;delete old._hk;delete old._savedAt;}
+    var m=cp;
+    if(old){m=Object.assign({},old,cp);m.slots=Object.assign({},old.slots||{},cp.slots||{});m.cerrada=!!(old.cerrada||cp.cerrada);}
+    var w=packSec({hist:{k:m}}).hist.k;w._hk=key;w._savedAt=Date.now();
+    tx.set(ref,nullifyUndef(w));
+  });});
+}
+function archRun(tasks,n){
+  var i=0;
+  function next(){if(i>=tasks.length)return Promise.resolve();var t=tasks[i++];return t().catch(function(e){console.warn('arch',e&&e.code||e);}).then(next);}
+  var w=[];for(var k=0;k<n;k++)w.push(next());
+  return Promise.all(w);
+}
+// Escribe lo nuevo/cambiado; devuelve qué quedó confirmado en su documento aparte.
+function archWrite(S){
+  var tasks=[],avOk={},hiOk={},curAv={},curHi={};
+  avValidos(S._avances||[],S._avDel||{}).forEach(function(a){
+    if(!a||a.id==null)return;curAv[a.id]=1;var sig=avSig(a);
+    if(_arch.avW[a.id]===sig){avOk[a.id]=1;return;}
+    tasks.push(function(){return archSetAv(a).then(function(){_arch.avW[a.id]=sig;avOk[a.id]=1;});});
+  });
+  Object.keys(S.hist||{}).forEach(function(k){
+    var j=S.hist[k];if(!j)return;curHi[k]=1;var sig=hiSig(j);
+    if(_arch.hiW[k]===sig){hiOk[k]=1;return;}
+    tasks.push(function(){return archSetHi(k,j).then(function(){_arch.hiW[k]=sig;hiOk[k]=1;});});
+  });
+  // lo que ya no está en memoria (retomado / "Borrar un día") se borra de su documento
+  Object.keys(_arch.avW).forEach(function(id){
+    if(curAv[id])return;
+    tasks.push(function(){return fbDb.collection(FB_COL).doc('nav_'+id).delete().then(function(){delete _arch.avW[id];});});
+  });
+  Object.keys(_arch.hiW).forEach(function(k){
+    if(curHi[k])return;
+    tasks.push(function(){return fbDb.collection(FB_COL).doc('nhist_'+archSafe(k)).delete().then(function(){delete _arch.hiW[k];});});
+  });
+  return archRun(tasks,4).then(function(){return {avOk:avOk,hiOk:hiOk};},function(){return {avOk:{},hiOk:{}};});
+}
+function archBorrarTodo(){
+  var done=[];
+  ['nav_','nhist_'].forEach(function(pre){
+    done.push(fbDb.collection(FB_COL).where(firebase.firestore.FieldPath.documentId(),'>=',pre).where(firebase.firestore.FieldPath.documentId(),'<',pre+'').get().then(function(q){
+      return Promise.all(q.docs.map(function(d){return d.ref.delete();}));
+    }).catch(function(e){console.warn('arch borrar',e);}));
+  });
+  _arch.avW={};_arch.hiW={};
+  return Promise.all(done);
+}
+// Llega algo de los documentos aparte -> se une a la memoria (nunca pisa lo local)
+function archApply(kind,items){
+  var Sx=SEC.notif;
+  if(kind==='av'){
+    var w={_avances:items};unpackSec(w);
+    w._avances.forEach(function(a){delete a._savedAt;if(a.id!=null)_arch.avW[a.id]=avSig(a);});
+    var byId={};
+    avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
+    avValidos(w._avances,Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=byId[a.id];byId[a.id]=p?mergeAvPair(p,a):a;}});
+    Sx._avances=normAvances(Object.keys(byId).map(function(k){return byId[k];}),Sx._avDel);
+  }else{
+    var h={hist:{}};items.forEach(function(d,i){h.hist['k'+i]=d;});unpackSec(h);
+    Sx.hist=Sx.hist||{};
+    Object.keys(h.hist).forEach(function(i){
+      var inc=h.hist[i],key=inc._hk;if(!key)return;
+      delete inc._hk;delete inc._savedAt;_arch.hiW[key]=hiSig(inc);
+      var loc=Sx.hist[key];
+      if(!loc)Sx.hist[key]=inc;
+      else{loc.slots=Object.assign({},inc.slots||{},loc.slots||{});loc.cerrada=!!(loc.cerrada||inc.cerrada);loc.hora=loc.hora||inc.hora;}
+    });
+  }
+  purgeDays(Sx);
+  try{updateAvancePill();if(document.getElementById('ind-panel-notif'))renderInd();}catch(e){}
+}
+function archStartListeners(){
+  if(!FB_ENABLED||!fbDb)return;
+  var seen={av:false,hi:false};
+  function done(k){seen[k]=true;if(seen.av&&seen.hi)_arch.resolve();}
+  setTimeout(function(){_arch.resolve();},10000);
+  [['av','nav_'],['hi','nhist_']].forEach(function(x){
+    var k=x[0],pre=x[1];
+    if(_arch['u'+k])_arch['u'+k]();
+    var q=fbDb.collection(FB_COL).where(firebase.firestore.FieldPath.documentId(),'>=',pre).where(firebase.firestore.FieldPath.documentId(),'<',pre+'');
+    _arch['u'+k]=q.onSnapshot(function(snap){
+      var items=[];
+      snap.docChanges().forEach(function(ch){if(ch.type!=='removed')items.push(ch.doc.data());});
+      if(items.length){try{archApply(k,items);}catch(e){console.warn('archApply',e);}}
+      done(k);
+    },function(e){console.warn('arch listener',k,e&&e.code||e);done(k);});
+  });
+}
 function stripDupData(S){
   if(!S||typeof S!=='object')return S;
   delete S.slotData;
@@ -4141,8 +4257,17 @@ function fbSaveSecRaw(sec,isReset,_retry){
   // sección se acerca a ese límite (hist/avances acumulando copias completas
   // de filas con los años), mejor enterarnos por un toast que por guardados
   // que fallan en silencio.
+  var pre=(sec==='notif')?_arch.p.then(function(){return archWrite(basePayload);}):Promise.resolve({avOk:{},hiOk:{}});
+  return pre.then(function(ok){
+  // lo ya confirmado en su documento aparte no viaja en sec_notif
+  function sinArchivados(o){
+    if(sec!=='notif'||!o)return o;
+    if(o._avances)o._avances=o._avances.filter(function(a){return !(a&&ok.avOk[a.id]);});
+    if(o.hist)Object.keys(o.hist).forEach(function(k){if(ok.hiOk[k])delete o.hist[k];});
+    return o;
+  }
   try{
-    var approxSize=JSON.stringify(basePayload).length;
+    var approxSize=JSON.stringify(sinArchivados(JSON.parse(JSON.stringify(basePayload)))).length;
     if(approxSize>700000&&Date.now()-(window._sizeToastTs||0)>120000){
       window._sizeToastTs=Date.now();
       var kb=function(o){return Math.round(JSON.stringify(o||{}).length/1024);};
@@ -4163,12 +4288,14 @@ function fbSaveSecRaw(sec,isReset,_retry){
       // cero EN CADA invocación del callback, para que cada intento de la
       // transacción parta siempre de un snapshot limpio.
       var payload=JSON.parse(JSON.stringify(basePayload));
-      var merged=nullifyUndef(packSec(stripDupData(mergeSecSmartJS(old,payload))));
+      var merged=nullifyUndef(packSec(sinArchivados(stripDupData(mergeSecSmartJS(old,payload)))));
       _lastMergedKB=Math.round(JSON.stringify(merged).length/1024);
       tx.set(ref,merged);
     });
+  });
   }).then(function(){
     _fbSaveFailCount[sec]=0;
+    if(isReset&&sec==='notif')archBorrarTodo();
   }).catch(function(e){
     console.warn('Firebase save error ('+sec+'):',e);
     // ANTES esto se tragaba en silencio: un checkbox marcado localmente que
@@ -4307,6 +4434,7 @@ var _fbPollTimer=null;
 var _fbLastSeenSavedAt={};
 function fbStartListeners(){
   if(!FB_ENABLED||!fbDb)return;
+  archStartListeners();
   ['syp','notif','sup'].forEach(function(sec){
     if(_fbUnsub[sec])_fbUnsub[sec]();
     _fbUnsub[sec]=fbSecRef(sec).onSnapshot(function(doc){
