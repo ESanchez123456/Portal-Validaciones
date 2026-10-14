@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB32</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB33</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 32;
+var BUILD_NUM = 33;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2039,7 +2039,7 @@ function buildArriboChart(rows){
     map[p.key]=(map[p.key]||0)+1;lab[p.key]=p.label;srt[p.key]=p.sortDate;
     rem[p.key]=rem[p.key]||{};rem[p.key][l]=(rem[p.key][l]||0)+1;remTot[l]=(remTot[l]||0)+1;
   });
-  var keys=Object.keys(map).sort(function(a,b){return srt[a]-srt[b];});
+  var keys=Object.keys(map).sort(function(a,b){return srt[b]-srt[a];}); // más reciente primero
   var box='<div style="margin-bottom:18px">'+head;
   if(!keys.length)return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin notificaciones en el rango elegido</div></div>';
   var rems=Object.keys(remTot).sort(function(a,b){return remTot[b]-remTot[a];});
@@ -2482,7 +2482,9 @@ function renderInd(){
       '<th style="padding:7px 10px;text-align:center;font-weight:600">Nestor ✓</th>'+
       '<th style="padding:7px 10px;text-align:center;font-weight:600">Jose ✓</th>'+
       '</tr></thead><tbody>';
-    days.forEach(function(d,idx){
+    // Más reciente primero; la variación se calcula contra el día cronológicamente anterior
+    var daysDesc=days.slice().reverse();
+    daysDesc.forEach(function(d,idx){
       var bg=idx%2===0?'#f8fafc':'#fff';
       // Peak day highlight
       if(peakDay&&d.date===peakDay.date&&d.cerrada!==false)bg='#fffbeb';
@@ -2492,7 +2494,7 @@ function renderInd(){
       var pctJose=d.joseT?Math.round(d.joseOk/d.joseT*100):0;
       var allDone=pctVal===100&&pctJemima===100&&pctNestor===100&&pctJose===100;
       // Growth vs previous day
-      var prevDay=idx>0?days[idx-1]:null;
+      var prevDay=idx<daysDesc.length-1?daysDesc[idx+1]:null;
       var growthCell='<td style="padding:6px 8px;text-align:center">—</td>';
       if(prevDay&&prevDay.total>0){
         var diff=d.total-prevDay.total;
@@ -3282,6 +3284,54 @@ function removeDayFromActive(S,d){
   });
   if(!S.rows.length)S._clearedAt=Date.now();
 }
+// ── Autoguardado: un día con TODO validado al 100% (Edu/Claudia y los 3 revisores)
+// pasa solo a "Avances guardados" (sigue contando en Indicadores y se puede
+// retomar). Así la lista de días activos no crece sin límite. No pierde nada:
+// es el mismo guardado de "Guardar avance", que ahora suma filas, no reemplaza.
+var _autoTimers={};
+function autoGuardarElegible(d){
+  if(!d||d===NUEVO||!dayDone(d))return false;
+  var rs=(SEC.notif.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
+  if(!rs.length)return false;
+  // con los 3 reportes cargados; o un día viejo (≥2 días) aunque le falte alguno (rezagados)
+  var tres=['N1n','N2n','N3n'].every(function(k){return rs.some(function(r){return r.slot===k;});});
+  if(tres)return true;
+  var m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(d);if(!m)return false;
+  var dd=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]));
+  return (Date.now()-dd.getTime())>=2*86400000;
+}
+function guardarDiaAuto(d){
+  var S=SEC.notif,rows=(S.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
+  if(!rows.length)return;
+  S._avances=S._avances||[];
+  var sl={},sd={};
+  (S.slots||[]).forEach(function(k){
+    sl[k]=rows.some(function(r){return r.slot===k;});
+    sd[k]=JSON.parse(JSON.stringify((S.slotData[k]||[]).filter(function(r){return fechaDiaR(r)===d;})));
+  });
+  var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  var av=mkAvDia({ts:Date.now(),fecha:todayStr(),hora:hora,slotLoaded:sl,slotData:sd},d,JSON.parse(JSON.stringify(rows)));
+  var ix=-1;S._avances.forEach(function(x,i){if(x&&(x.id===av.id||(x.fechaNotif||x.fecha)===d))ix=i;});
+  if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],av);else S._avances.push(av);
+  removeDayFromActive(S,d);releaseDay(d);
+  if(_viewDay===d)setViewDayVar(null);
+  lsSave();
+  refreshSec('notif');renderWF('notif');updateAvancePill();
+  toast('✅ El '+d+' quedó validado al 100% y se guardó solo en "Avances guardados" (sigue en Indicadores; puedes retomarlo).','ok');
+}
+function autoGuardarRevisar(){
+  if(!SEC||!SEC.notif)return;
+  fechasDe(SEC.notif.rows||[]).forEach(function(d){
+    if(autoGuardarElegible(d)){
+      if(_autoTimers[d])return;
+      // espera 20 s y vuelve a comprobar (por si alguien corrige una casilla)
+      _autoTimers[d]=setTimeout(function(){
+        delete _autoTimers[d];
+        if(autoGuardarElegible(d))guardarDiaAuto(d);
+      },20000);
+    }else if(_autoTimers[d]){clearTimeout(_autoTimers[d]);delete _autoTimers[d];}
+  });
+}
 function btnGuardarAvance(){
   var d=curDay();
   var rows=viewRows();
@@ -3465,6 +3515,7 @@ function allNotifLoaded(){
 }
 function checkSaveReady(sec){
   if(sec!=='notif')return;
+  autoGuardarRevisar();
   var rows=viewRows();
   if(!rows.length)return;
   // Check Edu/Claudia 100%
