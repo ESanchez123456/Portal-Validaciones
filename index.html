@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB39</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB40</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 39;
+var BUILD_NUM = 40;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -4054,6 +4054,44 @@ function mergeSecSmartJS(old,newSec){
 // Esta función recorre el objeto completo antes de cada escritura y
 // reemplaza cualquier undefined por null, para que un campo faltante nunca
 // tire abajo TODO el guardado (todas las filas, no solo la que lo causó).
+// Limpia todo lo que Firestore rechaza con "invalid-argument" (a cualquier profundidad):
+// claves vacías o del tipo __x__, arrays dentro de arrays, números no finitos,
+// caracteres Unicode inválidos (sustitutos sueltos / NUL) y textos gigantes.
+// Devuelve el objeto limpio y anota en _fsFixLog qué corrigió y dónde.
+var _fsFixLog=[];
+function fsClean(obj,path,depth){
+  depth=depth||0;path=path||'';
+  if(obj===undefined)return null;
+  if(obj===null)return null;
+  var t=typeof obj;
+  if(t==='number'){if(!isFinite(obj)){_fsFixLog.push(path+' (número no finito)');return null;}return obj;}
+  if(t==='string'){
+    var x=obj;
+    if(/[\u0000]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/.test(x)){
+      x=x.replace(/\u0000/g,'').replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g,'\uFFFD').replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g,'$1\uFFFD');
+      _fsFixLog.push(path+' (texto con caracteres inválidos)');
+    }
+    if(x.length>200000){x=x.slice(0,200000);_fsFixLog.push(path+' (texto demasiado largo)');}
+    return x;
+  }
+  if(t!=='object')return obj;
+  if(depth>18){_fsFixLog.push(path+' (demasiado profundo)');return null;}
+  if(Array.isArray(obj)){
+    return obj.map(function(v,i){
+      if(Array.isArray(v)){_fsFixLog.push(path+'['+i+'] (array dentro de array)');return {_arr:fsClean(v,path+'['+i+']',depth+1)};}
+      return fsClean(v,path+'['+i+']',depth+1);
+    });
+  }
+  var out={};
+  Object.keys(obj).forEach(function(k){
+    var nk=k;
+    if(k===''){nk='_vacio';_fsFixLog.push(path+'/'+'(clave vacía)');}
+    else if(/^__.*__$/.test(k)){nk='_'+k.replace(/^_+|_+$/g,'')+'_';_fsFixLog.push(path+'/'+k+' (clave reservada)');}
+    else if(k.length>1000){nk=k.slice(0,1000);_fsFixLog.push(path+'/(clave muy larga)');}
+    out[nk]=fsClean(obj[k],path+'/'+nk,depth+1);
+  });
+  return out;
+}
 function nullifyUndef(obj){
   if(obj===undefined)return null;
   if(obj===null||typeof obj!=='object')return obj;
@@ -4121,7 +4159,7 @@ function archSetAv(a){
     if(old){delete old._savedAt;delete old.slotData;}
     var m=old?mergeAvPair(old,cp):cp;delete m.slotData;delete m._savedAt;
     var w=packSec({_avances:[m]})._avances[0];w._savedAt=Date.now();
-    tx.set(ref,nullifyUndef(w));
+    tx.set(ref,fsClean(w));
   });});
 }
 function archSetHi(key,j){
@@ -4133,7 +4171,7 @@ function archSetHi(key,j){
     var m=cp;
     if(old){m=Object.assign({},old,cp);m.slots=Object.assign({},old.slots||{},cp.slots||{});m.cerrada=!!(old.cerrada||cp.cerrada);}
     var w=packSec({hist:{k:m}}).hist.k;w._hk=key;w._savedAt=Date.now();
-    tx.set(ref,nullifyUndef(w));
+    tx.set(ref,fsClean(w));
   });});
 }
 function archRun(tasks,n){
@@ -4289,7 +4327,9 @@ function fbSaveSecRaw(sec,isReset,_retry){
       // cero EN CADA invocación del callback, para que cada intento de la
       // transacción parta siempre de un snapshot limpio.
       var payload=JSON.parse(JSON.stringify(basePayload));
-      var merged=nullifyUndef(packSec(sinArchivados(stripDupData(mergeSecSmartJS(old,payload)))));
+      _fsFixLog=[];
+      var merged=fsClean(packSec(sinArchivados(stripDupData(mergeSecSmartJS(old,payload)))));
+      if(_fsFixLog.length)console.warn('[Firestore] campos corregidos antes de guardar:',_fsFixLog.slice(0,20));
       _lastMergedKB=Math.round(JSON.stringify(merged).length/1024);
       tx.set(ref,merged);
     });
@@ -4313,7 +4353,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
       });
     }
     _fbSaveFailCount[sec]=(_fbSaveFailCount[sec]||0)+1;
-    toast('❌ No se pudo guardar "'+sec+'" en la nube ('+(e&&e.code||e&&e.message||'error desconocido')+(_lastMergedKB?', '+_lastMergedKB+' KB':'')+'). Tus cambios quedan solo en este navegador — recarga puede perderlos.','err');
+    toast('❌ No se pudo guardar "'+sec+'" en la nube ('+(e&&e.code||'error')+(_lastMergedKB?', '+_lastMergedKB+' KB':'')+(e&&e.message?': '+String(e.message).slice(0,160):'')+(_fsFixLog.length?' | corregidos: '+_fsFixLog.slice(0,3).join('; '):'')+'). Tus cambios quedan solo en este navegador — recarga puede perderlos.','err');
   });
 }
 function fbSaveAll(isReset){
