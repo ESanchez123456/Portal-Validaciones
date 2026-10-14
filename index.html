@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB35</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB36</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 35;
+var BUILD_NUM = 36;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -4107,7 +4107,13 @@ function fbSaveSecRaw(sec,isReset,_retry){
   // que fallan en silencio.
   try{
     var approxSize=JSON.stringify(basePayload).length;
-    if(approxSize>700000)toast('⚠️ La base de "'+sec+'" pesa '+Math.round(approxSize/1024)+' KB — cerca del límite de Firebase. Avísame para depurarla.','warn');
+    if(approxSize>700000&&Date.now()-(window._sizeToastTs||0)>120000){
+      window._sizeToastTs=Date.now();
+      var kb=function(o){return Math.round(JSON.stringify(o||{}).length/1024);};
+      var det='activas '+kb(basePayload.rows)+' KB ('+(basePayload.rows||[]).length+' filas) · guardados '+kb(basePayload._avances)+' KB ('+(basePayload._avances||[]).length+' días) · historial '+kb(basePayload.hist)+' KB';
+      console.warn('[tamaño '+sec+']',det,Object.keys(basePayload).map(function(k){return k+':'+kb(basePayload[k]);}).join(' '));
+      toast('⚠️ La base de "'+sec+'" pesa '+Math.round(approxSize/1024)+' KB (límite 1024). '+det+'. Avísame para depurarla.','warn');
+    }
   }catch(e){}
   return fbDb.runTransaction(function(tx){
     return tx.get(ref).then(function(doc){
