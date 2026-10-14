@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB31</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB32</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 31;
+var BUILD_NUM = 32;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2620,7 +2620,7 @@ function renderInd(){
       notifH+='<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
         '<td style="padding:5px 9px;white-space:nowrap;color:var(--muted)">'+esc(r.fc2||'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc(r.cli||'—')+'</td>'+
-        '<td style="padding:5px 9px;white-space:nowrap">'+esc(r.id||'—')+'</td>'+
+        '<td style="padding:5px 9px;white-space:nowrap">'+(r.id?'<a class="id-link" href="'+MYBIG+esc(r.id)+'/" target="_blank" rel="noopener">'+esc(r.id)+' 🔗</a>':'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc((r.desc||'').slice(0,90))+((r.desc||'').length>90?'…':'')+'</td>'+
         '<td style="padding:5px 9px">'+esc(r.tif||'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc(r.stif||'—')+'</td>'+
