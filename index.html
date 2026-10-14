@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB38</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB39</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 38;
+var BUILD_NUM = 39;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2615,7 +2615,8 @@ function renderInd(){
 
     // ── Detalle: solo las OMISIONES (resoluciones con tipificación registrada) ──
     var detRows=notifAll2.filter(function(r){return !!r.tif;}).sort(function(a,b){
-      return (a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
+      // más reciente primero (por día de notificación), luego tipificación y subtipificación
+      return (fechaSortKey(fechaDiaR(b))-fechaSortKey(fechaDiaR(a)))||(a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
     });
     window._lastOmisionesRows=detRows;
     var v50Badge={'Jose Gutierrez':{bg:'#fef9c3',fg:'#744210'},'Jemima Gonzales':{bg:'#ede9fe',fg:'#553c9a'},'Nestor Rossell':{bg:'#fefce8',fg:'#713f12'}};
