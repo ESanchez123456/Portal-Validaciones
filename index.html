@@ -2015,6 +2015,18 @@ function nfSetRange(d,h){if(d!==null)_nfDesde=d;if(h!==null)_nfHasta=h;renderInd
 
 // ── Gráfico: notificaciones recibidas, con fechas propias ──
 var _arrMode='day',_arrDesde='',_arrHasta='';
+// Ventana de 2 semanas en Indicadores: por defecto solo se ven los últimos 14 días;
+// lo anterior se avisa ("hay pendiente de otras semanas") y se abre con un botón.
+var _indVerTodo=false;
+function indCutoffSk(){var d=new Date(Date.now()-14*86400000);return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();}
+function indToggleTodo(){_indVerTodo=!_indVerTodo;renderInd();}
+function indAvisoHTML(nDias,nPend){
+  if(!nDias)return _indVerTodo?'<div style="margin:0 0 8px"><button onclick="indToggleTodo()" style="padding:4px 12px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Mostrar solo las últimas 2 semanas</button></div>':'';
+  var msg=_indVerTodo?'Mostrando todo el historial.':
+    '📌 Hay <b>'+nDias+' día'+(nDias>1?'s':'')+' de semanas anteriores</b>'+(nPend?' — <b style="color:#b45309">'+nPend+' con pendientes</b>':' (todo completo)')+' que no se muestran (se ven las últimas 2 semanas).';
+  return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 8px;padding:7px 12px;border-radius:8px;font-size:12px;background:'+(nPend&&!_indVerTodo?'#fffbeb':'#f7f9fb')+';border:1px solid '+(nPend&&!_indVerTodo?'#f6ad55':'var(--border)')+'"><span>'+msg+'</span>'+
+    '<button onclick="indToggleTodo()" style="padding:4px 12px;border-radius:7px;border:1px solid #1BC5BD;background:#fff;color:#042433;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+(_indVerTodo?'Mostrar solo las últimas 2 semanas':'Ver semanas anteriores')+'</button></div>';
+}
 function arrSetMode(m){_arrMode=m;renderInd();}
 function arrSetRange(d,h){if(d!==null)_arrDesde=d;if(h!==null)_arrHasta=h;renderInd();}
 function buildArriboChart(rows){
@@ -2031,16 +2043,22 @@ function buildArriboChart(rows){
       return'<button onclick="arrSetMode(\''+m.k+'\')" style="padding:4px 12px;border-radius:7px;border:1px solid '+(mode===m.k?'#1BC5BD':'var(--border)')+';background:'+(mode===m.k?'#1BC5BD':'#fff')+';color:'+(mode===m.k?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+m.l+'</button>';
     }).join('')+'</div></div>';
   var map={},lab={},srt={},rem={},remTot={};
+  var _cut=indCutoffSk(),_oldD={},_usaRango=!!(lo||hi);
   rows.forEach(function(r){
     var d=parseDate(r.fc2);if(!d)return;
     if(lo&&d<lo)return;if(hi&&d>hi)return;
+    if(!_usaRango&&!_indVerTodo){
+      var _sk=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+      if(_sk<_cut){_oldD[_sk]=1;return;}
+    }
     var p=_tifPeriodOf(r.fc2,mode);
     var l=refLabel(r.referencia);
     map[p.key]=(map[p.key]||0)+1;lab[p.key]=p.label;srt[p.key]=p.sortDate;
     rem[p.key]=rem[p.key]||{};rem[p.key][l]=(rem[p.key][l]||0)+1;remTot[l]=(remTot[l]||0)+1;
   });
   var keys=Object.keys(map).sort(function(a,b){return srt[b]-srt[a];}); // más reciente primero
-  var box='<div style="margin-bottom:18px">'+head;
+  var _nOld=Object.keys(_oldD).length;
+  var box='<div style="margin-bottom:18px">'+head+(_usaRango?'':indAvisoHTML(_nOld,0).replace('(todo completo)','').replace(' que no se muestran (se ven las últimas 2 semanas)',' no se muestran aquí (se ven las últimas 2 semanas)'));
   if(!keys.length)return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin notificaciones en el rango elegido</div></div>';
   var rems=Object.keys(remTot).sort(function(a,b){return remTot[b]-remTot[a];});
   var pal=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#4a5568'];
@@ -2469,6 +2487,13 @@ function renderInd(){
       (peakDay?'<span style="font-size:10.5px;color:#744210;font-weight:600">📈 Día pico: '+peakDay.date+' ('+peakDay.total+' notis)</span>':'')+
       '<button onclick="exportNotifExcel()" style="background:#1BC5BD;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📥 Exportar Excel</button>'+
     '</div>';
+    var daysAll=days.slice().reverse();
+    var _cut2=indCutoffSk();
+    function _dayDone(d){var a=d.total?Math.round(d.valOk/d.total*100):0,b=d.jemimaT?Math.round(d.jemimaOk/d.jemimaT*100):100,c=d.nestorT?Math.round(d.nestorOk/d.nestorT*100):100,e=d.joseT?Math.round(d.joseOk/d.joseT*100):100;return a===100&&b===100&&c===100&&e===100;}
+    var _oldDays=daysAll.filter(function(d){return d.sk<_cut2;});
+    var _oldPend=_oldDays.filter(function(d){return !_dayDone(d);}).length;
+    var daysDesc=_indVerTodo?daysAll:daysAll.filter(function(d){return d.sk>=_cut2;});
+    notifH+=indAvisoHTML(_oldDays.length,_oldPend);
     notifH+='<div style="overflow-x:auto"><table id="notif-ind-table" style="width:100%;border-collapse:collapse;font-size:11.5px">'+
       '<thead><tr style="background:#042433;color:#fff">'+
       '<th style="padding:7px 10px;text-align:left;font-weight:600">Fecha</th>'+
@@ -2483,7 +2508,6 @@ function renderInd(){
       '<th style="padding:7px 10px;text-align:center;font-weight:600">Jose ✓</th>'+
       '</tr></thead><tbody>';
     // Más reciente primero; la variación se calcula contra el día cronológicamente anterior
-    var daysDesc=days.slice().reverse();
     daysDesc.forEach(function(d,idx){
       var bg=idx%2===0?'#f8fafc':'#fff';
       // Peak day highlight
@@ -2494,7 +2518,7 @@ function renderInd(){
       var pctJose=d.joseT?Math.round(d.joseOk/d.joseT*100):0;
       var allDone=pctVal===100&&pctJemima===100&&pctNestor===100&&pctJose===100;
       // Growth vs previous day
-      var prevDay=idx<daysDesc.length-1?daysDesc[idx+1]:null;
+      var _ai=daysAll.indexOf(d);var prevDay=_ai<daysAll.length-1?daysAll[_ai+1]:null;
       var growthCell='<td style="padding:6px 8px;text-align:center">—</td>';
       if(prevDay&&prevDay.total>0){
         var diff=d.total-prevDay.total;
@@ -3284,54 +3308,6 @@ function removeDayFromActive(S,d){
   });
   if(!S.rows.length)S._clearedAt=Date.now();
 }
-// ── Autoguardado: un día con TODO validado al 100% (Edu/Claudia y los 3 revisores)
-// pasa solo a "Avances guardados" (sigue contando en Indicadores y se puede
-// retomar). Así la lista de días activos no crece sin límite. No pierde nada:
-// es el mismo guardado de "Guardar avance", que ahora suma filas, no reemplaza.
-var _autoTimers={};
-function autoGuardarElegible(d){
-  if(!d||d===NUEVO||!dayDone(d))return false;
-  var rs=(SEC.notif.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
-  if(!rs.length)return false;
-  // con los 3 reportes cargados; o un día viejo (≥2 días) aunque le falte alguno (rezagados)
-  var tres=['N1n','N2n','N3n'].every(function(k){return rs.some(function(r){return r.slot===k;});});
-  if(tres)return true;
-  var m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(d);if(!m)return false;
-  var dd=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]));
-  return (Date.now()-dd.getTime())>=2*86400000;
-}
-function guardarDiaAuto(d){
-  var S=SEC.notif,rows=(S.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
-  if(!rows.length)return;
-  S._avances=S._avances||[];
-  var sl={},sd={};
-  (S.slots||[]).forEach(function(k){
-    sl[k]=rows.some(function(r){return r.slot===k;});
-    sd[k]=JSON.parse(JSON.stringify((S.slotData[k]||[]).filter(function(r){return fechaDiaR(r)===d;})));
-  });
-  var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-  var av=mkAvDia({ts:Date.now(),fecha:todayStr(),hora:hora,slotLoaded:sl,slotData:sd},d,JSON.parse(JSON.stringify(rows)));
-  var ix=-1;S._avances.forEach(function(x,i){if(x&&(x.id===av.id||(x.fechaNotif||x.fecha)===d))ix=i;});
-  if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],av);else S._avances.push(av);
-  removeDayFromActive(S,d);releaseDay(d);
-  if(_viewDay===d)setViewDayVar(null);
-  lsSave();
-  refreshSec('notif');renderWF('notif');updateAvancePill();
-  toast('✅ El '+d+' quedó validado al 100% y se guardó solo en "Avances guardados" (sigue en Indicadores; puedes retomarlo).','ok');
-}
-function autoGuardarRevisar(){
-  if(!SEC||!SEC.notif)return;
-  fechasDe(SEC.notif.rows||[]).forEach(function(d){
-    if(autoGuardarElegible(d)){
-      if(_autoTimers[d])return;
-      // espera 20 s y vuelve a comprobar (por si alguien corrige una casilla)
-      _autoTimers[d]=setTimeout(function(){
-        delete _autoTimers[d];
-        if(autoGuardarElegible(d))guardarDiaAuto(d);
-      },20000);
-    }else if(_autoTimers[d]){clearTimeout(_autoTimers[d]);delete _autoTimers[d];}
-  });
-}
 function btnGuardarAvance(){
   var d=curDay();
   var rows=viewRows();
@@ -3515,7 +3491,6 @@ function allNotifLoaded(){
 }
 function checkSaveReady(sec){
   if(sec!=='notif')return;
-  autoGuardarRevisar();
   var rows=viewRows();
   if(!rows.length)return;
   // Check Edu/Claudia 100%
