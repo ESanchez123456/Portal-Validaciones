@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-07-FB30</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB31</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 30;
+var BUILD_NUM = 31;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2419,70 +2419,45 @@ function renderInd(){
 
     // ── Por jornada: tabla de detalle ──
     // Build jornadas from hist (cerradas) + current active rows
-    var jornadaMap={};
-    // From hist (cerradas)
-    // Cada fila archivada se cuenta en SU fecha de notificación (no en la fecha en
-    // que se cerró la jornada): un 29/09 archivado hoy sigue siendo 29/09.
-    Object.values(SEC.notif.hist||{}).forEach(function(j){
-      if(!j.cerrada)return;
-      Object.values(j.slots||{}).forEach(function(sl){
-        if(!sl||!sl.recs)return;
-        sl.recs.forEach(function(r){
-          var dia=fechaDiaR(r),key='cerr '+dia;
-          if(!jornadaMap[key])jornadaMap[key]={date:dia,sk:fechaSortKey(dia),hora:j.hora||'',total:0,slot:{N1n:0,N2n:0,N3n:0},
-            valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:true,status:'cerrada'};
-          var J=jornadaMap[key];
-          J.total++;
-          var slKey=r.slot||sl.slot;
-          J.slot[slKey]=(J.slot[slKey]||0)+1;
-          if(r.val_ok)J.valOk++;
-          if(r.val50==='Jemima Gonzales'){J.jemimaT++;if(r.jemima_ok)J.jemimaOk++;}
-          if(r.val50==='Nestor Rossell'){J.nestorT++;if(r.nestor_ok)J.nestorOk++;}
-          if(r.val50==='Jose Gutierrez'){J.joseT++;if(r.jose_ok)J.joseOk++;}
-        });
-      });
-    });
-    // From active rows (current jornada en curso, aún no guardada ni cerrada)
-    var activeRows=SEC.notif.rows||[];
-    // Una fila "EN CURSO" por cada fecha de notificación presente en las filas
-    // activas (antes todo se juntaba en una sola "(Jornada activa)" y el 29/09
-    // se mezclaba con el 30/09 si se cargaban sin Guardar avance entre medio).
-    activeRows.forEach(function(r){
-      var dia=fechaDiaR(r);
-      var activeKey='(activa) '+dia;
-      if(!jornadaMap[activeKey])jornadaMap[activeKey]={date:dia,sk:fechaSortKey(dia),hora:'activa',total:0,slot:{N1n:0,N2n:0,N3n:0},
-        valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:false,status:'activa'};
-      var J=jornadaMap[activeKey];
+    // UNA sola línea por fecha de notificación, juntando filas activas, guardadas
+    // y archivadas (sin repetir filas). Antes una misma fecha podía salir hasta
+    // 3 veces (en curso / guardado / cerrada).
+    var jornadaMap={},_seenJ={};
+    function _jd(dia){
+      if(!jornadaMap[dia])jornadaMap[dia]={date:dia,sk:fechaSortKey(dia),hora:'',total:0,slot:{N1n:0,N2n:0,N3n:0},
+        valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,nAct:0,nAv:0,nCer:0,retomarId:null};
+      return jornadaMap[dia];
+    }
+    function _addJ(r,kind,slotFallback,hora){
+      if(!r||_seenJ[r.key])return;_seenJ[r.key]=1;
+      var J=_jd(fechaDiaR(r));
       J.total++;
-      if(r.slot)J.slot[r.slot]=(J.slot[r.slot]||0)+1;
+      var sk=r.slot||slotFallback;if(sk)J.slot[sk]=(J.slot[sk]||0)+1;
       if(r.val_ok)J.valOk++;
       if(r.val50==='Jemima Gonzales'){J.jemimaT++;if(r.jemima_ok)J.jemimaOk++;}
       if(r.val50==='Nestor Rossell'){J.nestorT++;if(r.nestor_ok)J.nestorOk++;}
       if(r.val50==='Jose Gutierrez'){J.joseT++;if(r.jose_ok)J.joseOk++;}
-    });
-    // One row per saved-but-not-retomado avance (Guardar avance), each its own day
+      if(kind==='act')J.nAct++;else if(kind==='av')J.nAv++;else J.nCer++;
+      if(hora&&!J.hora)J.hora=hora;
+    }
+    (SEC.notif.rows||[]).forEach(function(r){_addJ(r,'act');});
     (SEC.notif._avances||[]).forEach(function(av){
-      var key='av-'+av.id;
-      var label=(av.fechaNotif||av.fecha);
-      jornadaMap[key]={date:label,hora:av.hora,total:0,slot:{N1n:0,N2n:0,N3n:0},
-        valOk:0,jemimaOk:0,jemimaT:0,nestorOk:0,nestorT:0,joseOk:0,joseT:0,cerrada:false,status:'guardado',retomarId:av.id};
-      (av.rows||[]).forEach(function(r){
-        jornadaMap[key].total++;
-        if(r.slot)jornadaMap[key].slot[r.slot]=(jornadaMap[key].slot[r.slot]||0)+1;
-        if(r.val_ok)jornadaMap[key].valOk++;
-        if(r.val50==='Jemima Gonzales'){jornadaMap[key].jemimaT++;if(r.jemima_ok)jornadaMap[key].jemimaOk++;}
-        if(r.val50==='Nestor Rossell'){jornadaMap[key].nestorT++;if(r.nestor_ok)jornadaMap[key].nestorOk++;}
-        if(r.val50==='Jose Gutierrez'){jornadaMap[key].joseT++;if(r.jose_ok)jornadaMap[key].joseOk++;}
+      (av.rows||[]).forEach(function(r){_addJ(r,'av','',av.hora);});
+      var dd=av.fechaNotif||av.fecha;if(dd&&jornadaMap[dd])jornadaMap[dd].retomarId=av.id;
+    });
+    Object.values(SEC.notif.hist||{}).forEach(function(j){
+      if(!j.cerrada)return;
+      Object.values(j.slots||{}).forEach(function(sl){
+        if(!sl||!sl.recs)return;
+        sl.recs.forEach(function(r){_addJ(r,'cer',sl.slot,j.hora);});
       });
     });
-    var _statusOrder={cerrada:0,guardado:1,activa:2};
-    var days=Object.values(jornadaMap).sort(function(a,b){
-      var oa=_statusOrder[a.status!==undefined?a.status:(a.cerrada?'cerrada':'activa')];
-      var ob=_statusOrder[b.status!==undefined?b.status:(b.cerrada?'cerrada':'activa')];
-      if(oa!==ob)return oa-ob;
-      if(a.sk!==undefined&&b.sk!==undefined)return a.sk-b.sk;
-      return a.date.localeCompare(b.date);
-    });
+    var days=Object.keys(jornadaMap).map(function(k){
+      var J=jornadaMap[k];
+      J.status=J.nAct?'activa':(J.nAv?'guardado':'cerrada');
+      J.cerrada=J.status==='cerrada';
+      return J;
+    }).sort(function(x,y){return x.sk-y.sk;});
 
     notifH+='<div style="margin-bottom:18px">';
     // Find peak day (max total, only cerradas)
@@ -2629,6 +2604,8 @@ function renderInd(){
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead style="position:sticky;top:0;z-index:1"><tr style="background:#042433;color:#fff;text-align:left">'+
         '<th style="padding:6px 9px;min-width:80px">Fecha</th>'+
+        '<th style="padding:6px 9px;min-width:150px">Cliente</th>'+
+        '<th style="padding:6px 9px;min-width:80px">ID proceso</th>'+
         '<th style="padding:6px 9px;min-width:220px">Descripción</th>'+
         '<th style="padding:6px 9px;min-width:160px">Tipificación</th>'+
         '<th style="padding:6px 9px;min-width:160px">Subtipificación</th>'+
@@ -2642,6 +2619,8 @@ function renderInd(){
       var revBadge=_ag?'<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:'+(vc?vc.bg:'#eef1f5')+';color:'+(vc?vc.fg:'#042433')+'">'+esc(_ag.split(' ')[0])+'</span>':'<span style="color:var(--muted)">—</span>';
       notifH+='<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
         '<td style="padding:5px 9px;white-space:nowrap;color:var(--muted)">'+esc(r.fc2||'—')+'</td>'+
+        '<td style="padding:5px 9px">'+esc(r.cli||'—')+'</td>'+
+        '<td style="padding:5px 9px;white-space:nowrap">'+esc(r.id||'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc((r.desc||'').slice(0,90))+((r.desc||'').length>90?'…':'')+'</td>'+
         '<td style="padding:5px 9px">'+esc(r.tif||'—')+'</td>'+
         '<td style="padding:5px 9px">'+esc(r.stif||'—')+'</td>'+
@@ -2650,7 +2629,7 @@ function renderInd(){
         '<td style="padding:5px 9px">'+(r.ident?'<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:#e0f2fe;color:#075985">'+esc(identCorto(r.ident))+'</span>':'<span style="color:var(--muted)">—</span>')+'</td>'+
       '</tr>';
     });
-    if(!detRows.length)notifH+='<tr><td colspan="7" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
+    if(!detRows.length)notifH+='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
     notifH+='</tbody></table></div></div>';
 
     // ── Gráfico: evolución de omisiones por Tipificación, día a día ──
@@ -3325,7 +3304,8 @@ function btnGuardarAvance(){
   var avPayload=mkAvDia(baseAv,d,JSON.parse(JSON.stringify(rows)));
   var ix=-1;
   S._avances.forEach(function(x,i){if(x&&(x.id===avPayload.id||(x.fechaNotif||x.fecha)===d))ix=i;});
-  if(ix>=0)S._avances[ix]=avPayload;else S._avances.push(avPayload);
+  // Si ya había un avance de ese día (p. ej. rezagados de otro reporte), se SUMAN las filas: no se reemplaza.
+  if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],avPayload);else S._avances.push(avPayload);
   removeDayFromActive(S,d);releaseDay(d);
   setViewDayVar(NUEVO);
   lsSave();
@@ -3729,7 +3709,7 @@ function dedupeAvancesByFecha(avs){
     // tiene, por la fecha en que se guardó (avances antiguos)
     var key=a.fechaNotif||a.fecha;
     if(!key){byFecha['__id_'+a.id]=a;return;}
-    if(!byFecha[key]||(a.id||0)>=(byFecha[key].id||0))byFecha[key]=a;
+    byFecha[key]=byFecha[key]?mergeAvPair(byFecha[key],a):a;
   });
   var out=Object.keys(byFecha).map(function(k){return byFecha[k];});
   out.sort(function(a,b){return(a.id||0)-(b.id||0);});
@@ -3887,6 +3867,45 @@ function mergeAvDel(a,b){
 function avValidos(avs,tomb){
   return (avs||[]).filter(function(a){if(!a)return false;var t=(tomb||{})[a.id];return !(t&&(a.ts||0)<=t);});
 }
+var EDIT_FIELDS_G=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
+// Fusiona DOS versiones de la misma fila: gana la más reciente, pero cada campo
+// editable se decide por su propia marca de tiempo (no se pierde ninguna casilla).
+function mergeRowPair(x,y){
+  var w=((y._rowTs||0)>=(x._rowTs||0))?y:x,l=(w===y)?x:y;
+  var out=Object.assign({},w),wf=w._fieldTs||{},lf=l._fieldTs||{},of={};
+  EDIT_FIELDS_G.forEach(function(f){
+    var wt=fieldTsOf(wf,w._rowTs||0,f),lt=fieldTsOf(lf,l._rowTs||0,f);
+    if(lt>wt&&l[f]!==undefined){out[f]=l[f];of[f]=lt;}else of[f]=wt;
+  });
+  out._fieldTs=of;out._rowTs=Math.max(x._rowTs||0,y._rowTs||0);
+  return out;
+}
+function mergeRowLists(a,b){
+  var map={},order=[];
+  (a||[]).forEach(function(r){if(!r)return;if(!map[r.key])order.push(r.key);map[r.key]=r;});
+  (b||[]).forEach(function(r){if(!r)return;if(map[r.key])map[r.key]=mergeRowPair(map[r.key],r);else{order.push(r.key);map[r.key]=r;}});
+  return order.map(function(k){return map[k];});
+}
+// Fusiona dos avances de la MISMA fecha: une las filas de ambos (antes el más
+// nuevo reemplazaba al otro y se perdían los reportes 1 y 2 del día).
+function mergeAvPair(p,a){
+  if(!p)return a;if(!a)return p;
+  var newer=((a.ts||0)>=(p.ts||0))?a:p,older=(newer===a)?p:a;
+  var out=Object.assign({},newer);
+  out.rows=mergeRowLists(older.rows,newer.rows);
+  var valOk=out.rows.filter(function(r){return r.val_ok;}).length;
+  out.total=out.rows.length;out.valOk=valOk;out.pct=out.total?Math.round(valOk/out.total*100):0;
+  out.id=Math.max(p.id||0,a.id||0)||newer.id;
+  var sl={};
+  [older.slotLoaded,newer.slotLoaded].forEach(function(o){Object.keys(o||{}).forEach(function(k){if(o[k])sl[k]=true;else if(!(k in sl))sl[k]=false;});});
+  out.slotLoaded=sl;
+  var sd={};
+  [older.slotData,newer.slotData].forEach(function(o){Object.keys(o||{}).forEach(function(k){
+    if(Array.isArray(o[k]))sd[k]=mergeRowLists(sd[k]||[],o[k]);else if(!(k in sd))sd[k]=o[k];
+  });});
+  out.slotData=sd;
+  return out;
+}
 function mergeOwners(a,b){
   var out={};a=a||{};b=b||{};
   Object.keys(a).concat(Object.keys(b)).forEach(function(d){
@@ -3931,7 +3950,7 @@ function mergeSecSmartJS(old,newSec){
   var oldAv=avValidos(old._avances||[],tombAll);
   var byId={};
   oldAv.forEach(function(a){if(a&&a.id!=null)byId[a.id]=a;});
-  avValidos(incomingAv,tombAll).forEach(function(a){if(a&&a.id!=null){var p=byId[a.id];if(!p||(a.ts||0)>=(p.ts||0))byId[a.id]=a;}});
+  avValidos(incomingAv,tombAll).forEach(function(a){if(a&&a.id!=null){var p=byId[a.id];byId[a.id]=p?mergeAvPair(p,a):a;}});
   var mergedAv=[];
   Object.keys(byId).forEach(function(k){mergedAv.push(byId[k]);});
   // Segunda pasada: colapsar por FECHA (no solo por id) — ver dedupeAvancesByFecha.
@@ -4132,7 +4151,7 @@ function fbApplyIncoming(sec,gs){
   }
   var avById={};
   avValidos(Sx._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null)avById[a.id]=a;});
-  avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];if(!p||(a.ts||0)>=(p.ts||0))avById[a.id]=a;}});
+  avValidos(gs._avances||[],Sx._avDel).forEach(function(a){if(a&&a.id!=null){var p=avById[a.id];avById[a.id]=p?mergeAvPair(p,a):a;}});
   Sx._avances=normAvances(Object.keys(avById).map(function(k){return avById[k];}),Sx._avDel);
   var archived=secArchivedKeys({_avances:Sx._avances,_avDel:Sx._avDel,hist:Sx.hist});
   var localRows=Sx.rows||[];
@@ -4277,12 +4296,12 @@ function exportOmisionesExcel(){
   var rows=window._lastOmisionesRows||[];
   if(!rows.length){toast('No hay omisiones para exportar','warn');return;}
   var wb=XLSX.utils.book_new();
-  var wsData=[['Fecha','Descripción','Tipificación','Subtipificación','Obs. validación','Responsable de agendar','Identificó el error','Remitente']];
+  var wsData=[['Fecha','Cliente','ID proceso','Descripción','Tipificación','Subtipificación','Obs. validación','Responsable de agendar','Identificó el error','Remitente']];
   rows.forEach(function(r){
-    wsData.push([r.fc2||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',agendaDe(r),identCorto(r.ident),refLabel(r.referencia)]);
+    wsData.push([r.fc2||'',r.cli||'',r.id||'',r.desc||'',r.tif||'',r.stif||'',r.ov||'',agendaDe(r),identCorto(r.ident),refLabel(r.referencia)]);
   });
   var ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16},{wch:18},{wch:20}];
+  ws['!cols']=[{wch:14},{wch:28},{wch:14},{wch:60},{wch:30},{wch:30},{wch:30},{wch:16},{wch:18},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Omisiones');
   XLSX.writeFile(wb,'detalle_omisiones_'+todayStr().replace(/\//g,'-')+'.xlsx');
   toast('📥 Exportado correctamente','ok');
