@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB36</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB37</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 36;
+var BUILD_NUM = 37;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -4065,12 +4065,48 @@ function nullifyUndef(obj){
 // slotData es una COPIA de las filas (ya están en rows / avances[].rows) que solo
 // se leía al retomar; duplicaba el tamaño del documento (~1 MB de límite en Firestore).
 // Se quita al guardar; las filas viajan una sola vez.
+// Compactación de filas al guardar: no se escriben los campos que valen lo mismo
+// que el valor por defecto de baseR (''/false/'Pendiente'); al leer se rellenan.
+// Ahorra ~1/3 del peso de cada fila (el documento tiene tope de 1 MB en Firestore).
+var _ROW_NOPACK={fc:1,_ld:1,section:1};
+function _rowDefaults(sec){return baseR(sec||'syp');}
+function packRow(r){
+  if(!r||typeof r!=='object')return r;
+  var d=_rowDefaults(r.section),o={};
+  Object.keys(r).forEach(function(k){
+    if(!_ROW_NOPACK[k]&&k in d&&r[k]===d[k])return;
+    o[k]=r[k];
+  });
+  o._pk=1;
+  return o;
+}
+function unpackRow(r){
+  if(!r||typeof r!=='object'||!r._pk)return r;
+  var d=_rowDefaults(r.section);
+  Object.keys(d).forEach(function(k){if(!_ROW_NOPACK[k]&&!(k in r))r[k]=d[k];});
+  delete r._pk;
+  return r;
+}
+function mapRowsSec(S,fn){
+  if(!S||typeof S!=='object')return S;
+  if(Array.isArray(S.rows))S.rows=S.rows.map(fn);
+  (S._avances||[]).forEach(function(a){if(a&&Array.isArray(a.rows))a.rows=a.rows.map(fn);});
+  Object.keys(S.hist||{}).forEach(function(h){
+    var j=S.hist[h];if(!j||!j.slots)return;
+    Object.keys(j.slots).forEach(function(k){var sl=j.slots[k];if(sl&&Array.isArray(sl.recs))sl.recs=sl.recs.map(fn);});
+  });
+  if(S.slotData)Object.keys(S.slotData).forEach(function(k){if(Array.isArray(S.slotData[k]))S.slotData[k]=S.slotData[k].map(fn);});
+  return S;
+}
+function packSec(S){return mapRowsSec(S,packRow);}
+function unpackSec(S){return mapRowsSec(S,unpackRow);}
 function stripDupData(S){
   if(!S||typeof S!=='object')return S;
   delete S.slotData;
   (S._avances||[]).forEach(function(a){if(a)delete a.slotData;});
   return S;
 }
+var _lastMergedKB=0;
 var _fbSaveFailCount={syp:0,notif:0,sup:0};
 // Guardado en cola: UNA sola transacción por sección a la vez. Antes cada click de
 // checkbox lanzaba su propia transacción sobre el mismo documento; varias en
@@ -4117,7 +4153,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
   }catch(e){}
   return fbDb.runTransaction(function(tx){
     return tx.get(ref).then(function(doc){
-      var old=doc.exists?doc.data():null;
+      var old=doc.exists?unpackSec(doc.data()):null;
       // IMPORTANTE: Firestore puede reintentar este callback internamente si
       // detecta un conflicto de escritura concurrente. mergeSecSmartJS muta
       // el objeto que recibe (newSec.rows[i]._rowTs, newSec._avances, etc.),
@@ -4127,7 +4163,8 @@ function fbSaveSecRaw(sec,isReset,_retry){
       // cero EN CADA invocación del callback, para que cada intento de la
       // transacción parta siempre de un snapshot limpio.
       var payload=JSON.parse(JSON.stringify(basePayload));
-      var merged=nullifyUndef(stripDupData(mergeSecSmartJS(old,payload)));
+      var merged=nullifyUndef(packSec(stripDupData(mergeSecSmartJS(old,payload))));
+      _lastMergedKB=Math.round(JSON.stringify(merged).length/1024);
       tx.set(ref,merged);
     });
   }).then(function(){
@@ -4148,7 +4185,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
       });
     }
     _fbSaveFailCount[sec]=(_fbSaveFailCount[sec]||0)+1;
-    toast('❌ No se pudo guardar "'+sec+'" en la nube ('+(e&&e.code||e&&e.message||'error desconocido')+'). Tus cambios quedan solo en este navegador — recarga puede perderlos.','err');
+    toast('❌ No se pudo guardar "'+sec+'" en la nube ('+(e&&e.code||e&&e.message||'error desconocido')+(_lastMergedKB?', '+_lastMergedKB+' KB':'')+'). Tus cambios quedan solo en este navegador — recarga puede perderlos.','err');
   });
 }
 function fbSaveAll(isReset){
@@ -4161,6 +4198,7 @@ function fbSaveAll(isReset){
 // si no tengo filas, adopta las del servidor tal cual.
 function fbApplyIncoming(sec,gs){
   if(!gs)return;
+  unpackSec(gs);
   var Sx=SEC[sec];
   // Versión: si hay una más nueva que la mía, pauso mis guardados; si quien
   // escribió usa una más vieja, aviso quién es para que recargue.
