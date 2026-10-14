@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB33</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB34</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 33;
+var BUILD_NUM = 34;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2586,31 +2586,29 @@ function renderInd(){
     // ── Gráfico: notificaciones recibidas (día / semana / mes / año), con sus propias fechas ──
     notifH+=buildArriboChart(notifFull);
 
-    // ── Resumen: Tipificación x Revisor ──
+    // ── Resumen por tipificación: SOLO omisiones (con tipificación), por tipificación, subtipificación y día ──
     var tifMap={};
     notifAll2.forEach(function(r){
-      var t=r.tif||'— Sin tipificar —';
-      if(!tifMap[t])tifMap[t]={tif:t,total:0,jemima:0,nestor:0};
-      tifMap[t].total++;
-      // Quien comete la omisión es quien agenda (Jemima o Néstor), no quien revisa
-      if(r.paralegal==='Jemima Gonzales')tifMap[t].jemima++;
-      else if(r.paralegal==='Nestor Rossell')tifMap[t].nestor++;
+      if(!r.tif)return;
+      var dia=fechaDiaR(r),st=r.stif||'—',k=r.tif+'||'+st+'||'+dia;
+      if(!tifMap[k])tifMap[k]={tif:r.tif,stif:st,dia:dia,sk:fechaSortKey(dia),n:0};
+      tifMap[k].n++;
     });
-    var tifRows=Object.values(tifMap).sort(function(a,b){return b.total-a.total;});
+    var tifRows=Object.values(tifMap).sort(function(a,b){return (b.sk-a.sk)||a.tif.localeCompare(b.tif)||a.stif.localeCompare(b.stif);});
     notifH+='<div style="margin-bottom:18px">'+
       '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📊 Resumen por tipificación</div>'+
       '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">'+
       '<thead><tr style="background:#042433;color:#fff;text-align:left">'+
-        '<th style="padding:7px 10px">Tipificación</th><th style="padding:7px 10px;text-align:center">Total</th>'+
-        '<th style="padding:7px 10px;text-align:center;color:#c4b5fd">Jemima</th>'+
-        '<th style="padding:7px 10px;text-align:center;color:#fde68a">Nestor</th>'+
+        '<th style="padding:7px 10px">Tipificación</th><th style="padding:7px 10px">Subtipificación</th>'+
+        '<th style="padding:7px 10px">Día</th><th style="padding:7px 10px;text-align:center">N.º</th>'+
       '</tr></thead><tbody>';
+    if(!tifRows.length)notifH+='<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
     tifRows.forEach(function(t,i){
       notifH+='<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
         '<td style="padding:6px 10px;font-weight:600">'+esc(t.tif)+'</td>'+
-        '<td style="padding:6px 10px;text-align:center;font-weight:700">'+t.total+'</td>'+
-        '<td style="padding:6px 10px;text-align:center;color:#553c9a">'+(t.jemima||'—')+'</td>'+
-        '<td style="padding:6px 10px;text-align:center;color:#92400e">'+(t.nestor||'—')+'</td>'+
+        '<td style="padding:6px 10px">'+esc(t.stif)+'</td>'+
+        '<td style="padding:6px 10px;white-space:nowrap">'+esc(t.dia)+'</td>'+
+        '<td style="padding:6px 10px;text-align:center;font-weight:700">'+t.n+'</td>'+
       '</tr>';
     });
     notifH+='</tbody></table></div></div>';
