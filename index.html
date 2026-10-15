@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB41</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB42</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 41;
+var BUILD_NUM = 42;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2018,6 +2018,9 @@ var _arrMode='day',_arrDesde='',_arrHasta='';
 // Ventana de 2 semanas en Indicadores: por defecto solo se ven los últimos 14 días;
 // lo anterior se avisa ("hay pendiente de otras semanas") y se abre con un botón.
 var _indVerTodo=false;
+var _omF={fecha:'',cli:'',tif:'',stif:'',ag:'',ident:''};
+function omSetF(k,v){_omF[k]=v;renderInd();}
+function omClear(){_omF={fecha:'',cli:'',tif:'',stif:'',ag:'',ident:''};renderInd();}
 function indCutoffSk(){var d=new Date(Date.now()-14*86400000);return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();}
 function indToggleTodo(){_indVerTodo=!_indVerTodo;renderInd();}
 function indAvisoHTML(nDias,nPend){
@@ -2618,13 +2621,31 @@ function renderInd(){
       // más reciente primero (por día de notificación), luego tipificación y subtipificación
       return (fechaSortKey(fechaDiaR(b))-fechaSortKey(fechaDiaR(a)))||(a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
     });
+    // ── Filtros del detalle de omisiones ──
+    var omGet={fecha:function(r){return fechaDiaR(r)||'';},cli:function(r){return r.cli||'';},tif:function(r){return r.tif||'';},
+      stif:function(r){return r.stif||'';},ag:function(r){return agendaDe(r)||'';},ident:function(r){return r.ident?identCorto(r.ident):'';}};
+    var omLbl={fecha:'Fecha',cli:'Cliente',tif:'Tipificación',stif:'Subtipificación',ag:'Responsable de agendar',ident:'Identificó el error'};
+    var detAll=detRows;
+    var omActive=Object.keys(_omF).filter(function(k){return _omF[k]!=='';});
+    detRows=detAll.filter(function(r){return omActive.every(function(k){return omGet[k](r)===_omF[k];});});
+    var omSel=Object.keys(omLbl).map(function(k){
+      var vals={};detAll.forEach(function(r){vals[omGet[k](r)]=1;});
+      var arr=Object.keys(vals);
+      arr.sort(k==='fecha'?function(a,b){return fechaSortKey(b)-fechaSortKey(a);}:function(a,b){return a.localeCompare(b);});
+      return '<label style="display:flex;flex-direction:column;gap:2px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">'+omLbl[k]+
+        '<select onchange="omSetF(\''+k+'\',decodeURIComponent(this.value))" style="padding:4px 6px;border:1px solid '+(_omF[k]!==''?'#1BC5BD':'var(--border)')+';border-radius:6px;font-size:11.5px;font-family:inherit;font-weight:400;text-transform:none;letter-spacing:0;max-width:200px;background:'+(_omF[k]!==''?'#e6fffa':'#fff')+'">'+
+        '<option value="">Todos</option>'+arr.map(function(v){return '<option value="'+encodeURIComponent(v)+'"'+(_omF[k]===v?' selected':'')+'>'+esc(v||'(vacío)')+'</option>';}).join('')+'</select></label>';
+    }).join('');
+    var omBar='<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:8px;padding:8px 10px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px">'+omSel+
+      '<button onclick="omClear()" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;font-family:inherit">✕ Quitar filtros</button>'+
+      '<div style="margin-left:auto;font-size:12px;font-weight:700;color:'+(omActive.length?'#0e7490':'#042433')+'">'+(omActive.length?'🔎 '+detRows.length+' omisión'+(detRows.length===1?'':'es')+' con estos filtros (de '+detAll.length+')':detAll.length+' omisiones en total')+'</div></div>';
     window._lastOmisionesRows=detRows;
     var v50Badge={'Jose Gutierrez':{bg:'#fef9c3',fg:'#744210'},'Jemima Gonzales':{bg:'#ede9fe',fg:'#553c9a'},'Nestor Rossell':{bg:'#fefce8',fg:'#713f12'}};
     notifH+='<div style="margin-bottom:18px">'+
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
-      '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📋 Detalle de omisiones ('+detRows.length+')</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📋 Detalle de omisiones ('+detRows.length+(omActive.length?' de '+detAll.length:'')+')</div>'+
       '<button class="btn bg" style="font-size:11px;padding:5px 12px;margin-left:auto" onclick="exportOmisionesExcel()">📊 Exportar Excel</button>'+
-      '</div>'+
+      '</div>'+omBar+
       '<div style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px">'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead style="position:sticky;top:0;z-index:1"><tr style="background:#042433;color:#fff;text-align:left">'+
@@ -2654,7 +2675,7 @@ function renderInd(){
         '<td style="padding:5px 9px">'+(r.ident?'<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:#e0f2fe;color:#075985">'+esc(identCorto(r.ident))+'</span>':'<span style="color:var(--muted)">—</span>')+'</td>'+
       '</tr>';
     });
-    if(!detRows.length)notifH+='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
+    if(!detRows.length)notifH+='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">'+(omActive.length?'Ninguna omisión coincide con los filtros':'Sin omisiones registradas')+'</td></tr>';
     notifH+='</tbody></table></div></div>';
 
     // ── Gráfico: evolución de omisiones por Tipificación, día a día ──
