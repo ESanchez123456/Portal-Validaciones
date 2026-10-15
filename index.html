@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB40</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB41</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -585,7 +585,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 40;
+var BUILD_NUM = 41;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1727,7 +1727,7 @@ function btnBorrar(sec){
     (nHist?' y '+nHist+' jornada(s) archivada(s)':'')+
     ' — incluyendo lo que hayan guardado otros usuarios en la nube.\n\nEsto TAMBIÉN borra el Histórico e Indicadores de esta sección. No se puede deshacer.';
   if(!confirm(msg))return;
-  S.rows=[];S._clearedAt=Date.now();
+  S.rows=[];S._clearedAt=Date.now();S._resetAt=Date.now(); // _resetAt: SOLO "Borrar base" (no cerrar/guardar un día)
   S._avances=[];
   S.hist={};
   S.slots.forEach(function(s){S.slotData[s]=[];S.slotLoaded[s]=false;S.slotSaved[s]=false;});
@@ -3950,7 +3950,7 @@ function mergeSecSmartJS(old,newSec){
   var incomingHistEmpty=!newSec.hist||Object.keys(newSec.hist).length===0;
   // Borrado total deliberado ("Borrar base"): se respeta tal cual
   var clearNewer=clearedTs>oldSavedTs||clearedTs>(old._clearedAt||0);
-  var isFullReset=incomingRows.length===0&&incomingAv.length===0&&incomingHistEmpty&&clearNewer;
+  var isFullReset=incomingRows.length===0&&incomingAv.length===0&&incomingHistEmpty&&clearNewer&&(newSec._resetAt||0)>(old._resetAt||0);
   if(isFullReset)return newSec;
   // Histórico: unión por fecha, el más nuevo gana
   if(old.hist||newSec.hist){
@@ -4047,6 +4047,7 @@ function mergeSecSmartJS(old,newSec){
   newSec._dayOwner=mergeOwners(old._dayOwner,newSec._dayOwner);
   purgeDays(newSec);
   newSec._minBuild=Math.max(old._minBuild||0,newSec._minBuild||0);
+  newSec._resetAt=Math.max(old._resetAt||0,newSec._resetAt||0);
   return newSec;
 }
 // Firestore rechaza de inmediato (sin red, sin reintento posible) cualquier
@@ -4291,7 +4292,7 @@ function fbSaveSecRaw(sec,isReset,_retry){
   basePayload._savedAt=savedAt;
   basePayload._build=BUILD_NUM;basePayload._writer=CURRENT_USER||'';
   basePayload._minBuild=BUILD_NUM;
-  if(isReset)basePayload._clearedAt=savedAt;
+  if(isReset){basePayload._clearedAt=savedAt;basePayload._resetAt=savedAt;}
   // Aviso defensivo: Firestore rechaza un documento de más de ~1MB. Si esta
   // sección se acerca a ese límite (hist/avances acumulando copias completas
   // de filas con los años), mejor enterarnos por un toast que por guardados
@@ -4410,10 +4411,14 @@ function fbApplyIncoming(sec,gs){
     if(localRows.length!==before)Sx.rows=localRows;
   }
   // Borrado total deliberado hecho por otro usuario ("Borrar base")
-  if(!(gs.rows&&gs.rows.length)&&!(gs._avances&&gs._avances.length)&&(!gs.hist||!Object.keys(gs.hist).length)
-     &&(gs._clearedAt||0)>(Sx._clearedAt||0)&&localRows.length){
+  // OJO: antes se deducía por "sin filas, sin avances y sin historial", pero ahora los
+  // avances/historial viven en documentos aparte (siempre vacíos aquí) y guardar el
+  // último día activo parecía un "Borrar base": borraba las filas (y casillas) de los demás.
+  // Ahora solo cuenta la marca explícita _resetAt, que escribe únicamente "Borrar base".
+  if(!(gs.rows&&gs.rows.length)&&(gs._resetAt||0)>(Sx._resetAt||0)&&localRows.length){
     Sx.rows=localRows=[];
   }
+  if((gs._resetAt||0)>(Sx._resetAt||0))Sx._resetAt=gs._resetAt;
   if((gs._clearedAt||0)>(Sx._clearedAt||0))Sx._clearedAt=gs._clearedAt;
   if(localRows.length===0){
     if(gs.rows&&gs.rows.length>0){
@@ -4712,6 +4717,7 @@ function lsLoad(){
       if(d.slotLoaded)SEC[sec].slotLoaded=d.slotLoaded;
       if(d.slotSaved)SEC[sec].slotSaved=d.slotSaved;
       if(d._clearedAt)SEC[sec]._clearedAt=d._clearedAt;
+      if(d._resetAt)SEC[sec]._resetAt=d._resetAt;
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
       if(d._avDel)SEC[sec]._avDel=d._avDel;
       if(d._dayDel)SEC[sec]._dayDel=d._dayDel;
