@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-14-FB42</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-15-FB43</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -398,6 +398,7 @@ tr:hover td{background:#f7faff}
         <th style="min-width:220px">Subtipificación</th>
         <th style="min-width:180px">Obs. Validación</th>
         <th style="min-width:170px">🔎 ¿Quién identificó el error?</th>
+        <th style="min-width:150px">⬇️ Gestionar baja</th>
       </tr></thead>
       <tbody id="tbody-notif"></tbody>
     </table>
@@ -585,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 42;
+var BUILD_NUM = 43;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -756,7 +757,7 @@ function getES(e){return ES[e]||ES['Pendiente'];}
 function hv(r,v){return r.vs===v||r.ve===v||r.vt===v;}
 function gv(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-function baseR(sec){return{est:'Pendiente',rev:'',val:'',val_edu:false,val_cld:false,val_ok:false,val50:'',jose_ok:false,jemima_ok:false,nestor_ok:false,frev:'',vs:'',ve:'',vt:'',ov:'',tif:'',stif:'',ident:'',paralegal:'',par_ok:false,fc:now(),_ld:Date.now(),section:sec||'syp'};}
+function baseR(sec){return{est:'Pendiente',rev:'',val:'',val_edu:false,val_cld:false,val_ok:false,val50:'',jose_ok:false,jemima_ok:false,nestor_ok:false,frev:'',vs:'',ve:'',vt:'',ov:'',tif:'',stif:'',ident:'',paralegal:'',par_ok:false,baja_ok:false,baja_by:'',baja_ts:0,fc:now(),_ld:Date.now(),section:sec||'syp'};}
 function toast(msg,type){
   var el=document.createElement('div');
   el.className='toast t-'+(type==='ok'?'ok':type==='warn'?'warn':'err');
@@ -1241,7 +1242,7 @@ function renderNotifTable(){
   var rows=getNotifRows();
   var S=SEC.notif;
   if(!rows.length){
-    tb.innerHTML='<tr class="empty"><td colspan="25">Sin registros. Carga un archivo Excel para comenzar.</td></tr>';
+    tb.innerHTML='<tr class="empty"><td colspan="26">Sin registros. Carga un archivo Excel para comenzar.</td></tr>';
     return;
   }
   var h='';
@@ -1353,7 +1354,7 @@ var _lockToastTs=0;
     var t=e.target;
     if(!t.closest||!t.closest('input,select,textarea'))return;
     // Las casillas de revisión 50% (Jose/Jemima/Nestor) siempre se pueden marcar, aunque el día sea de otra persona
-    if(t.dataset&&(t.dataset.f50==='jose_ok'||t.dataset.f50==='jemima_ok'||t.dataset.f50==='nestor_ok'))return;
+    if(t.dataset&&(t.dataset.f50==='jose_ok'||t.dataset.f50==='jemima_ok'||t.dataset.f50==='nestor_ok'||t.dataset.bj))return;
     if(ev==='keydown'&&(e.key==='Tab'||e.key.indexOf('Arrow')===0))return;
     e.preventDefault();e.stopPropagation();
     if(Date.now()-_lockToastTs>2500){_lockToastTs=Date.now();toast('🔒 '+fn1(o.by)+' está trabajando el '+d+'. Estás en modo lectura (usa "Tomar el día" si hace falta).','warn');}
@@ -1499,7 +1500,7 @@ function touchFields(r,fields){
   var now=Math.max(Date.now(),_hlcMax+1);_hlcMax=now;
   (fields||[]).forEach(function(f){r._fieldTs[f]=now;});
   if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER){r._by=CURRENT_USER;r._byTs=now;}
-  var _soloRev=(fields||[]).length>0&&(fields||[]).every(function(f){return f==='jose_ok'||f==='jemima_ok'||f==='nestor_ok';});
+  var _soloRev=(fields||[]).length>0&&(fields||[]).every(function(f){return f==='jose_ok'||f==='jemima_ok'||f==='nestor_ok'||f==='baja_ok'||f==='baja_by'||f==='baja_ts';});
   if(!_soloRev&&/^N\dn$/.test(r.slot||''))claimDay(fechaDiaR(r),true);
   r._rowTs=now; // se conserva como respaldo/diagnóstico, ya no decide la fusión por sí solo
 }
@@ -2678,6 +2679,28 @@ function renderInd(){
     if(!detRows.length)notifH+='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">'+(omActive.length?'Ninguna omisión coincide con los filtros':'Sin omisiones registradas')+'</td></tr>';
     notifH+='</tbody></table></div></div>';
 
+    // ── Bajas gestionadas (todas, sin depender del filtro de fechas) ──
+    var bajas=notifFull.filter(function(r){return r.baja_ok;}).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
+    notifH+='<div style="margin-bottom:18px">'+
+      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">⬇️ Bajas gestionadas <span style="background:#fed7d7;color:#9b2c2c;border-radius:10px;padding:1px 9px;margin-left:4px">'+bajas.length+'</span></div>'+
+      '<div style="overflow:auto;max-height:360px;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead style="position:sticky;top:0"><tr style="background:#042433;color:#fff;text-align:left">'+
+      ['Marcada','Por','Cliente','ID proceso','Expediente','Contraparte','Descripción','Supervisor','Responsable'].map(function(h){return '<th style="padding:6px 9px">'+h+'</th>';}).join('')+
+      '</tr></thead><tbody>'+
+      (bajas.length?bajas.map(function(r,i){
+        return '<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
+          '<td style="padding:5px 9px;white-space:nowrap">'+esc(bajaFechaHora(r.baja_ts))+'</td>'+
+          '<td style="padding:5px 9px">'+esc(fn1(r.baja_by))+'</td>'+
+          '<td style="padding:5px 9px">'+esc(r.cli||'—')+'</td>'+
+          '<td style="padding:5px 9px;white-space:nowrap">'+(r.id?'<a class="id-link" href="'+MYBIG+esc(r.id)+'/" target="_blank" rel="noopener">'+esc(r.id)+' 🔗</a>':'—')+'</td>'+
+          '<td style="padding:5px 9px;white-space:nowrap">'+esc(r.exp||'—')+'</td>'+
+          '<td style="padding:5px 9px">'+esc(r.contraparte||'—')+'</td>'+
+          '<td style="padding:5px 9px">'+esc((r.desc||'').slice(0,90))+((r.desc||'').length>90?'…':'')+'</td>'+
+          '<td style="padding:5px 9px">'+esc(r.sup||'—')+'</td>'+
+          '<td style="padding:5px 9px">'+esc(r.resp||'—')+'</td></tr>';
+      }).join(''):'<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">Aún no hay bajas gestionadas</td></tr>')+
+      '</tbody></table></div></div>';
+
     // ── Gráfico: evolución de omisiones por Tipificación, día a día ──
     notifH+=buildTifChart(notifFull.filter(function(r){return !!r.tif;}));
   }
@@ -3110,7 +3133,55 @@ function buildRow(r,S){
     '<td>'+buildStifSel(k,r.tif,r.stif)+'</td>'+
     '<td><input class="icel" data-k="'+k+'" data-f="ov" value="'+esc(r.ov)+'" onchange="chFld(this)" placeholder="—"></td>'+
     (r.section==='notif'?'<td>'+buildIdentSel(k,r.ident)+'</td>':'')+
+    (r.section==='notif'?'<td class="baja-cell">'+bajaCellHTML(r,k)+'</td>':'')+
   '</tr>';
+}
+// ── Gestionar baja ──────────────────────────────────────────────────────────
+// Casilla por fila: pide confirmación (SÍ/NO); al confirmar queda cerrada (no se puede
+// modificar), registra quién y cuándo, y abre en Outlook un borrador para Lady con copia
+// a Paralegal Procesal. (Fase 1: el correo lo envía la persona; luego se puede automatizar.)
+var BAJA_TO='lcardenas@vinateatoyama.com',BAJA_CC='paralegalprocesal@vinateatoyama.com';
+function bajaFechaHora(ts){var d=new Date(ts);return d.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});}
+function bajaCellHTML(r,k){
+  if(r.baja_ok){
+    return '<div style="font-size:11px;line-height:1.35"><span style="padding:2px 8px;border-radius:10px;font-weight:700;background:#fed7d7;color:#9b2c2c;white-space:nowrap">✅ Baja enviada</span>'+
+      '<div style="color:var(--muted);margin-top:2px">'+esc(fn1(r.baja_by))+' · '+esc(bajaFechaHora(r.baja_ts))+'</div>'+
+      '<button class="btn" data-k="'+k+'" data-bj="1" onclick="bajaReabrir(this)" style="padding:2px 8px;font-size:10.5px;margin-top:3px" title="Vuelve a abrir el borrador del correo por si no se envió">✉ Reabrir correo</button></div>';
+  }
+  return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;white-space:nowrap"><input type="checkbox" data-k="'+k+'" data-bj="1" onclick="bajaClick(event,this)" style="width:15px;height:15px;accent-color:#c53030;cursor:pointer"> Gestionar baja</label>';
+}
+function bajaMailto(r){
+  var cut=function(t,n){t=String(t||'').replace(/\s+/g,' ').trim();return t.length>n?t.slice(0,n)+'…':t;};
+  var subj='GESTIONAR BAJA: '+[r.cli,r.exp,r.contraparte].map(function(x){return cut(x,80)||'—';}).join(', ');
+  var body=['Lady, gestionar esta baja con el equipo responsable:','',
+    'Cliente: '+(r.cli||'—'),
+    'ID del proceso: '+(r.id?r.id+' ('+MYBIG+r.id+'/)':'—'),
+    'Expediente: '+(r.exp||'—'),
+    'Contraparte: '+(r.contraparte||'—'),
+    'Descripción: '+cut(r.desc,700),
+    'Supervisor: '+(r.sup||'—'),
+    'Responsable: '+(r.resp||'—'),
+    '','Marcado por: '+fn1(r.baja_by||CURRENT_USER)+' — '+bajaFechaHora(r.baja_ts||Date.now())].join('\r\n');
+  return 'mailto:'+BAJA_TO+'?cc='+encodeURIComponent(BAJA_CC)+'&subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);
+}
+function bajaAbrirCorreo(r){
+  var a=document.createElement('a');a.href=bajaMailto(r);a.style.display='none';
+  document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},500);
+}
+function bajaReabrir(el){var r=findR(el.dataset.k);if(r&&r.baja_ok)bajaAbrirCorreo(r);}
+function bajaClick(ev,el){
+  ev.preventDefault();ev.stopPropagation();
+  var r=findR(el.dataset.k);if(!r||r.baja_ok)return;
+  var msg='¿ENVIAR PARA GESTIONAR BAJA?\n\nCliente: '+(r.cli||'—')+'\nExpediente: '+(r.exp||'—')+'\nContraparte: '+(r.contraparte||'—')+
+    '\n\nSe abrirá un correo para Lady (con copia a Paralegal Procesal).\nAl aceptar, la baja queda cerrada y NO se puede modificar.';
+  if(!confirm(msg))return;
+  r.baja_ok=true;r.baja_by=CURRENT_USER||'—';r.baja_ts=Date.now();
+  touchFields(r,['baja_ok','baja_by','baja_ts']);
+  var td=el.closest('td');if(td)td.innerHTML=bajaCellHTML(r,esc(r.key));
+  lsSave();
+  bajaAbrirCorreo(r);
+  toast('📧 Baja marcada. Revisa el borrador del correo en Outlook y envíalo.','ok');
+  try{if(document.getElementById('ind-panel-notif'))renderInd();}catch(e){}
 }
 // Remitente / procedencia de la resolución (campo REFERENCIA del reporte).
 // Para renombrar un código basta editar REF_ETIQUETAS.
@@ -3913,9 +3984,11 @@ function mergeAvDel(a,b){
 function avValidos(avs,tomb){
   return (avs||[]).filter(function(a){if(!a)return false;var t=(tomb||{})[a.id];return !(t&&(a.ts||0)<=t);});
 }
-var EDIT_FIELDS_G=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
+var EDIT_FIELDS_G=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado','baja_ok','baja_by','baja_ts'];
 // Fusiona DOS versiones de la misma fila: gana la más reciente, pero cada campo
 // editable se decide por su propia marca de tiempo (no se pierde ninguna casilla).
+// La baja enviada es irreversible: si cualquiera de las dos versiones la tiene, se conserva.
+function bajaKeep(dst,src){if(src&&src.baja_ok&&!dst.baja_ok){dst.baja_ok=true;dst.baja_by=src.baja_by;dst.baja_ts=src.baja_ts;}}
 function mergeRowPair(x,y){
   var w=((y._rowTs||0)>=(x._rowTs||0))?y:x,l=(w===y)?x:y;
   var out=Object.assign({},w),wf=w._fieldTs||{},lf=l._fieldTs||{},of={};
@@ -3924,6 +3997,7 @@ function mergeRowPair(x,y){
     if(lt>wt&&l[f]!==undefined){out[f]=l[f];of[f]=lt;}else of[f]=wt;
   });
   out._fieldTs=of;out._rowTs=Math.max(x._rowTs||0,y._rowTs||0);
+  bajaKeep(out,x);bajaKeep(out,y);
   return out;
 }
 function mergeRowLists(a,b){
@@ -4006,7 +4080,7 @@ function mergeSecSmartJS(old,newSec){
   if(mergedAv.length>5000)mergedAv=mergedAv.slice(mergedAv.length-5000);
   newSec._avances=mergedAv;
   var oldRows=uniqRowKeys(old.rows||[]);
-  var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
+  var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado','baja_ok','baja_by','baja_ts'];
   if(incomingRows.length===0&&oldRows.length>0&&!clearNewer){
     // Cliente viejo/inactivo re-guardando su estado vacío por accidente -> se ignora
     newSec.rows=oldRows;
@@ -4048,6 +4122,7 @@ function mergeSecSmartJS(old,newSec){
       });
       nr._fieldTs=nFts;
       nr._rowTs=Math.max(rowFallbackNts,rowFallbackOts);
+      bajaKeep(nr,or);
     });
   }
   // ── Membresía de filas activas ──
@@ -4450,7 +4525,7 @@ function fbApplyIncoming(sec,gs){
     }
   }else if(gs.rows&&gs.rows.length>0){
     // Fusión CAMPO POR CAMPO usando _fieldTs (ver mergeSecSmartJS)
-    var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado'];
+    var EDIT_FIELDS=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nestor_ok','frev','ov','tif','stif','ident','paralegal','par_ok','estRev','clasificacion','aiAnalizado','baja_ok','baja_by','baja_ts'];
     var gsMap={};gs.rows.forEach(function(r){gsMap[r.key]=r;});
     var localKeys={};
     localRows.forEach(function(lr){
@@ -4468,6 +4543,7 @@ function fbApplyIncoming(sec,gs){
       });
       lr._fieldTs=lFts;
       lr._rowTs=Math.max(rowFallbackLts,rowFallbackGts);
+      bajaKeep(lr,gr);
     });
     // Filas que otro usuario cargó/tiene y yo no: adoptarlas. Antes se
     // ignoraban, y al guardar yo después, mi lista incompleta las BORRABA
