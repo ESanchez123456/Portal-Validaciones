@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB46</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB47</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -586,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 46;
+var BUILD_NUM = 47;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1553,8 +1553,10 @@ function refreshSec(sec){
     var VR=viewRows();
     var bn=document.getElementById('hbadge-notif');if(bn)bn.textContent='Notif: '+VR.length+(S.rows.length!==VR.length?' (de '+S.rows.length+')':'');
     renderDayBar();syncNotifSlotLabels();
-    // Show/hide lock banner
-    var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'));
+    try{foldRezagados();}catch(e){}
+    // Show/hide lock banner (no aplica a un día que ya tiene reportes archivados)
+    var _vd=curDay();
+    var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'))||(_vd&&_vd!==NUEVO&&diaTieneArchivo(_vd));
     var banner=document.getElementById('notif-lock-banner');
     if(banner){
       banner.style.display=allLoaded?'none':'block';
@@ -2560,6 +2562,9 @@ function renderInd(){
           (d.nAv&&d.retomarId?'<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">+'+d.nAv+' guardados</span>'+
             '<button onclick="btnRetomarAvance(\''+d.retomarId+'\')" style="background:#1BC5BD;color:#fff;border:none;padding:1px 8px;border-radius:8px;font-size:9px;font-weight:600;cursor:pointer;font-family:inherit">▶ Retomar</button>':'')+
           '</span>'
+        :(d.status==='guardado'&&allDone)
+        ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+'<span style="background:#C9F7F5;color:#1BC5BD;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:700">100% ✓</span>'+
+          '<button onclick="btnRetomarAvance(\''+d.retomarId+'\')" style="background:#fff;color:#553c9a;border:1px solid #d6bcfa;padding:1px 8px;border-radius:8px;font-size:9px;font-weight:600;cursor:pointer;font-family:inherit">▶ Retomar</button></span>'
         :d.status==='guardado'
         ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+
           '<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">GUARDADO</span>'+
@@ -3418,6 +3423,48 @@ function removeDayFromActive(S,d){
     if(!has)S.slotData[sl]=[];
   });
   if(!S.rows.length)S._clearedAt=Date.now();
+}
+// ── Rezagados: un día que YA está archivado (avance o jornada cerrada) y al que solo le
+// queda en pantalla un rezagado (p. ej. un reporte cargado tarde) ya validado al 100%
+// se guarda solo en "Avances guardados": deja de aparecer "en curso". No toca días
+// con pendientes ni días que otra persona está trabajando.
+function diaTieneArchivo(d){
+  var S=SEC.notif;
+  if((S._avances||[]).some(function(a){return a&&(a.fechaNotif||a.fecha)===d;}))return true;
+  return Object.keys(S.hist||{}).some(function(h){
+    var j=S.hist[h];if(!j||!j.cerrada)return false;
+    return Object.keys(j.slots||{}).some(function(k){var sl=j.slots[k];return sl&&(sl.recs||[]).some(function(r){return fechaDiaR(r)===d;});});
+  });
+}
+var _foldT={};
+function guardarDiaAuto(d){
+  var S=SEC.notif,rows=(S.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
+  if(!rows.length)return;
+  S._avances=S._avances||[];
+  var sl={},sd={};
+  (S.slots||[]).forEach(function(k){sl[k]=rows.some(function(r){return r.slot===k;});sd[k]=[];});
+  var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  var av=mkAvDia({ts:Date.now(),fecha:todayStr(),hora:hora,slotLoaded:sl,slotData:sd},d,JSON.parse(JSON.stringify(rows)));
+  var ix=-1;S._avances.forEach(function(x,i){if(x&&(x.id===av.id||(x.fechaNotif||x.fecha)===d))ix=i;});
+  if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],av);else S._avances.push(av);
+  removeDayFromActive(S,d);releaseDay(d);
+  if(_viewDay===d)setViewDayVar(null);
+  lsSave();
+  refreshSec('notif');renderWF('notif');updateAvancePill();
+  toast('✅ El '+d+' ya estaba cerrado y el rezagado quedó validado al 100%: se unió solo a "Avances guardados".','ok');
+}
+function foldRezagados(){
+  if(!SEC||!SEC.notif)return;
+  fechasDe(SEC.notif.rows||[]).forEach(function(d){
+    var el=dayDone(d)&&diaTieneArchivo(d)&&!lockedByOther(d);
+    if(el){
+      if(_foldT[d])return;
+      _foldT[d]=setTimeout(function(){
+        delete _foldT[d];
+        if(dayDone(d)&&diaTieneArchivo(d)&&!lockedByOther(d))guardarDiaAuto(d);
+      },15000);
+    }else if(_foldT[d]){clearTimeout(_foldT[d]);delete _foldT[d];}
+  });
 }
 function btnGuardarAvance(){
   var d=curDay();
