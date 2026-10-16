@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB48</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB49</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -586,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 48;
+var BUILD_NUM = 49;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2702,7 +2702,7 @@ function renderInd(){
     notifH+='</tbody></table></div></div>';
 
     // ── Bajas gestionadas (todas, sin depender del filtro de fechas) ──
-    var bajas=notifFull.filter(function(r){return r.baja_ok;}).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
+    var bajas=notifFull.filter(bajaVig).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
     notifH+='<div style="margin-bottom:18px">'+
       '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">⬇️ Bajas gestionadas <span style="background:#fed7d7;color:#9b2c2c;border-radius:10px;padding:1px 9px;margin-left:4px">'+bajas.length+'</span></div>'+
       '<div style="overflow:auto;max-height:360px;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
@@ -3165,7 +3165,7 @@ function buildRow(r,S){
 var BAJA_TO='lcardenas@vinateatoyama.com',BAJA_CC='paralegalprocesal@vinateatoyama.com';
 function bajaFechaHora(ts){var d=new Date(ts);return d.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});}
 function bajaCellHTML(r,k){
-  if(r.baja_ok){
+  if(bajaVig(r)){
     return '<div style="font-size:11px;line-height:1.35"><span style="padding:2px 8px;border-radius:10px;font-weight:700;background:#fed7d7;color:#9b2c2c;white-space:nowrap">✅ Baja enviada</span>'+
       '<div style="color:var(--muted);margin-top:2px">'+esc(fn1(r.baja_by))+' · '+esc(bajaFechaHora(r.baja_ts))+'</div>'+
       '<button class="btn" data-k="'+k+'" data-bj="1" onclick="bajaReabrir(this)" style="padding:2px 8px;font-size:10.5px;margin-top:3px" title="Vuelve a abrir el borrador del correo por si no se envió">✉ Reabrir correo</button></div>';
@@ -3193,10 +3193,10 @@ function bajaAbrirCorreo(r){
   var a=document.createElement('a');a.href=bajaMailto(r);a.style.display='none';
   document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},500);
 }
-function bajaReabrir(el){var r=findR(el.dataset.k);if(r&&r.baja_ok)bajaAbrirCorreo(r);}
+function bajaReabrir(el){var r=findR(el.dataset.k);if(bajaVig(r))bajaAbrirCorreo(r);}
 function bajaClick(ev,el){
   ev.preventDefault();ev.stopPropagation();
-  var r=findR(el.dataset.k);if(!r||r.baja_ok)return;
+  var r=findR(el.dataset.k);if(!r||bajaVig(r))return;
   var msg='¿ENVIAR PARA GESTIONAR BAJA?\n\nCliente: '+(r.cli||'—')+'\nExpediente: '+(r.exp||'—')+'\nContraparte: '+(r.contraparte||'—')+
     '\n\nSe abrirá un correo para Lady (con copia a Paralegal Procesal).\nAl aceptar, la baja queda cerrada y NO se puede modificar.';
   if(!confirm(msg))return;
@@ -4103,7 +4103,10 @@ var EDIT_FIELDS_G=['est','rev','val','val_ok','val50','jose_ok','jemima_ok','nes
 // Fusiona DOS versiones de la misma fila: gana la más reciente, pero cada campo
 // editable se decide por su propia marca de tiempo (no se pierde ninguna casilla).
 // La baja enviada es irreversible: si cualquiera de las dos versiones la tiene, se conserva.
-function bajaKeep(dst,src){if(src&&src.baja_ok&&!dst.baja_ok){dst.baja_ok=true;dst.baja_by=src.baja_by;dst.baja_ts=src.baja_ts;}}
+// Bajas de prueba: todo lo marcado hasta esta marca de tiempo (16/10/2026 ~10:45) se ignora.
+var BAJA_RESET_TS=1792165400299;
+function bajaVig(r){return !!(r&&r.baja_ok&&(r.baja_ts||0)>BAJA_RESET_TS);}
+function bajaKeep(dst,src){if(bajaVig(src)&&!bajaVig(dst)){dst.baja_ok=true;dst.baja_by=src.baja_by;dst.baja_ts=src.baja_ts;}}
 function mergeRowPair(x,y){
   var w=((y._rowTs||0)>=(x._rowTs||0))?y:x,l=(w===y)?x:y;
   var out=Object.assign({},w),wf=w._fieldTs||{},lf=l._fieldTs||{},of={};
