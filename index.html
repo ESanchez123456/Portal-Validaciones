@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-15-FB44</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB45</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -586,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 44;
+var BUILD_NUM = 45;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1308,6 +1308,15 @@ function renderDayBar(){
   });
   h+='<button class="btn" onclick="setViewDay(NUEVO)" style="padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;border:2px dashed '+(_nuevoOn?'#1BC5BD':'var(--border)')+';background:'+(_nuevoOn?'#e6fffa':'#fff')+';color:#042433;cursor:pointer">➕ Cargar nuevo día</button>';
   if(det.length)h+='<div style="flex-basis:100%;display:flex;flex-direction:column;gap:3px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:11px;font-weight:700;color:var(--muted)">Qué se subió y quién lo trabaja</div>'+det.join('')+'</div>';
+  // Si el día en pantalla tiene además registros ya GUARDADOS (p. ej. llegó un rezagado después
+  // de guardar el avance), se avisa: no se perdieron, están en "Avances guardados".
+  var _avSame=(SEC.notif._avances||[]).filter(function(a){return a&&(a.fechaNotif||a.fecha)===cur;})[0];
+  if(_avSame&&cur!==NUEVO){
+    var _nAct=rows.filter(function(r){return fechaDiaR(r)===cur;}).length;
+    h+='<div style="flex-basis:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#faf5ff;border:1px solid #d6bcfa;border-radius:8px;padding:7px 12px;font-size:12px;color:#44337a">'+
+      '📌 El <b>'+cur+'</b> tiene además <b>'+(_avSame.total||(_avSame.rows||[]).length)+' registros guardados</b> ('+(_avSame.pct||0)+'% validados) que no se ven en esta pantalla; aquí hay '+_nAct+' en curso. No se perdieron.'+
+      '<button class="btn" onclick="btnRetomarAvance(\''+_avSame.id+'\')" style="padding:4px 12px;font-size:11.5px">▶ Retomar los guardados</button></div>';
+  }
   el.innerHTML=h;
   renderOwnerBanner();
 }
@@ -2542,7 +2551,10 @@ function renderInd(){
       }
       var fechaLabel=d.status==='activa'
         ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+
-          '<span style="background:#FFF4DE;color:#FFA800;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">EN CURSO</span></span>'
+          '<span style="background:#FFF4DE;color:#FFA800;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">EN CURSO</span>'+
+          (d.nAv&&d.retomarId?'<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">+'+d.nAv+' guardados</span>'+
+            '<button onclick="btnRetomarAvance(\''+d.retomarId+'\')" style="background:#1BC5BD;color:#fff;border:none;padding:1px 8px;border-radius:8px;font-size:9px;font-weight:600;cursor:pointer;font-family:inherit">▶ Retomar</button>':'')+
+          '</span>'
         :d.status==='guardado'
         ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+
           '<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">GUARDADO</span>'+
