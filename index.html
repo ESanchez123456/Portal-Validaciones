@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB45</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB46</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -586,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 45;
+var BUILD_NUM = 46;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2549,7 +2549,12 @@ function renderInd(){
           '<span style="font-size:9px;color:var(--muted);margin-left:2px">('+pct+'%)</span>'+badge+
         '</td>';
       }
-      var fechaLabel=d.status==='activa'
+      // Un día completo (100% en Edu/Claudia y en los 3 revisores) ya no es "EN CURSO"
+      var _savedBtn=(d.nAv&&d.retomarId)?'<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">+'+d.nAv+' guardados</span>'+
+        '<button onclick="btnRetomarAvance(\''+d.retomarId+'\')" style="background:#1BC5BD;color:#fff;border:none;padding:1px 8px;border-radius:8px;font-size:9px;font-weight:600;cursor:pointer;font-family:inherit">▶ Retomar</button>':'';
+      var fechaLabel=(d.status==='activa'&&allDone)
+        ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+'<span style="background:#C9F7F5;color:#1BC5BD;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:700">100% ✓</span>'+_savedBtn+'</span>'
+        :d.status==='activa'
         ?'<span style="display:inline-flex;align-items:center;gap:5px">'+d.date+
           '<span style="background:#FFF4DE;color:#FFA800;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">EN CURSO</span>'+
           (d.nAv&&d.retomarId?'<span style="background:#e9d8fd;color:#553c9a;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600">+'+d.nAv+' guardados</span>'+
