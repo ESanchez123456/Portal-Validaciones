@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB47</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB48</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -586,7 +586,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 47;
+var BUILD_NUM = 48;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -3428,6 +3428,13 @@ function removeDayFromActive(S,d){
 // queda en pantalla un rezagado (p. ej. un reporte cargado tarde) ya validado al 100%
 // se guarda solo en "Avances guardados": deja de aparecer "en curso". No toca días
 // con pendientes ni días que otra persona está trabajando.
+function diaEnHist(d){
+  var S=SEC.notif;
+  return Object.keys(S.hist||{}).some(function(h){
+    var j=S.hist[h];if(!j||!j.cerrada)return false;
+    return Object.keys(j.slots||{}).some(function(k){var sl=j.slots[k];return sl&&(sl.recs||[]).some(function(r){return fechaDiaR(r)===d;});});
+  });
+}
 function diaTieneArchivo(d){
   var S=SEC.notif;
   if((S._avances||[]).some(function(a){return a&&(a.fechaNotif||a.fecha)===d;}))return true;
@@ -3437,31 +3444,72 @@ function diaTieneArchivo(d){
   });
 }
 var _foldT={};
+function rowsDoneAll(rs){
+  if(!rs.length)return false;
+  if(!rs.every(function(r){return r.val_ok;}))return false;
+  var rv={'Jose Gutierrez':'jose_ok','Jemima Gonzales':'jemima_ok','Nestor Rossell':'nestor_ok'};
+  return Object.keys(rv).every(function(nm){return rs.filter(function(r){return r.val50===nm;}).every(function(r){return r[rv[nm]];});});
+}
+// Une los registros al histórico (jornada cerrada) que ya contiene ese día.
+function unirAHist(d,rows){
+  var S=SEC.notif;S.hist=S.hist||{};
+  var hk=Object.keys(S.hist).filter(function(h){
+    var j=S.hist[h];if(!j||!j.cerrada)return false;
+    return Object.keys(j.slots||{}).some(function(k){var sl=j.slots[k];return sl&&(sl.recs||[]).some(function(r){return fechaDiaR(r)===d;});});
+  })[0];
+  var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  if(!hk){
+    var base=todayStr(),n=1;hk=base;while(S.hist[hk]){n++;hk=base+' ('+n+')';}
+    S.hist[hk]={fecha:hk,cerrada:true,hora:hora,slots:{}};
+  }
+  var j=S.hist[hk];j.slots=j.slots||{};
+  rows.forEach(function(r){
+    var k=r.slot;if(!k)return;
+    var sl=j.slots[k]||(j.slots[k]={slot:k,nombre:SLOT_BASE[k]||k,hora:hora,n:0,recs:[]});
+    var cp=JSON.parse(JSON.stringify(r)),ix=-1;
+    sl.recs.forEach(function(x,i){if(x.key===cp.key)ix=i;});
+    if(ix>=0)sl.recs[ix]=cp;else sl.recs.push(cp);
+    sl.n=sl.recs.length;
+  });
+}
 function guardarDiaAuto(d){
   var S=SEC.notif,rows=(S.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
   if(!rows.length)return;
-  S._avances=S._avances||[];
-  var sl={},sd={};
-  (S.slots||[]).forEach(function(k){sl[k]=rows.some(function(r){return r.slot===k;});sd[k]=[];});
-  var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-  var av=mkAvDia({ts:Date.now(),fecha:todayStr(),hora:hora,slotLoaded:sl,slotData:sd},d,JSON.parse(JSON.stringify(rows)));
-  var ix=-1;S._avances.forEach(function(x,i){if(x&&(x.id===av.id||(x.fechaNotif||x.fecha)===d))ix=i;});
-  if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],av);else S._avances.push(av);
+  unirAHist(d,rows);
   removeDayFromActive(S,d);releaseDay(d);
   if(_viewDay===d)setViewDayVar(null);
   lsSave();
-  refreshSec('notif');renderWF('notif');updateAvancePill();
-  toast('✅ El '+d+' ya estaba cerrado y el rezagado quedó validado al 100%: se unió solo a "Avances guardados".','ok');
+  refreshSec('notif');renderWF('notif');updateAvancePill();renderHist('notif');renderInd();
+  toast('✅ El '+d+' ya estaba archivado y el rezagado quedó al 100%: se unió solo al histórico.','ok');
+}
+// Avances guardados que ya están 100% completos y cuyo día ya está archivado: pasan al histórico.
+function plegarAvancesCompletos(){
+  var S=SEC.notif,avs=S._avances||[],hecho=false;
+  avs.slice().forEach(function(av){
+    var d=av.fechaNotif||av.fecha,rs=av.rows||[];
+    if(!rs.length||!rowsDoneAll(rs))return;
+    var hist=Object.keys(S.hist||{}).some(function(h){
+      var j=S.hist[h];if(!j||!j.cerrada)return false;
+      return Object.keys(j.slots||{}).some(function(k){var sl=j.slots[k];return sl&&(sl.recs||[]).some(function(r){return fechaDiaR(r)===d;});});
+    });
+    if(!hist)return;
+    unirAHist(d,rs);
+    var ix=avs.indexOf(av);if(ix>=0)avs.splice(ix,1);
+    S._avDel=S._avDel||{};S._avDel[av.id]=Date.now();
+    hecho=true;
+  });
+  if(hecho){lsSave();updateAvancePill();renderHist('notif');renderInd();toast('✅ Avance 100% completo unido al histórico de su día.','ok');}
 }
 function foldRezagados(){
   if(!SEC||!SEC.notif)return;
+  if(!_foldT._av){_foldT._av=setTimeout(function(){delete _foldT._av;try{plegarAvancesCompletos();}catch(e){}},15000);}
   fechasDe(SEC.notif.rows||[]).forEach(function(d){
-    var el=dayDone(d)&&diaTieneArchivo(d)&&!lockedByOther(d);
+    var el=dayDone(d)&&diaEnHist(d)&&!lockedByOther(d);
     if(el){
       if(_foldT[d])return;
       _foldT[d]=setTimeout(function(){
         delete _foldT[d];
-        if(dayDone(d)&&diaTieneArchivo(d)&&!lockedByOther(d))guardarDiaAuto(d);
+        if(dayDone(d)&&diaEnHist(d)&&!lockedByOther(d))guardarDiaAuto(d);
       },15000);
     }else if(_foldT[d]){clearTimeout(_foldT[d]);delete _foldT[d];}
   });
