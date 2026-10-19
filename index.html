@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB52</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB53</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 52;
+var BUILD_NUM = 53;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2389,7 +2389,6 @@ function renderInd(){
   var _nfLo=_arrDesde?_isoToDate(_arrDesde):null;
   var _nfHi=_arrHasta?_isoToDate(_arrHasta):null;
   var _modoUltimo=!_nfLo&&!_nfHi;
-  if(_modoUltimo&&_maxD){var _spn=_periodSpan(_arrMode||'day',_maxD);_nfLo=_spn[0];_nfHi=_spn[1];}
   var notifAll2=notifFull.filter(function(r){
     if(!_nfLo&&!_nfHi)return true;
     var d=parseDate(r.fc2);
@@ -2402,7 +2401,7 @@ function renderInd(){
   _remOpts.sort();
   function _fd(d){return d?pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear():'…';}
   var _modoNm={day:'último día',week:'última semana',month:'último mes',year:'último año'}[_arrMode||'day'];
-  var _rangoLbl=(_modoUltimo?'Mostrando el '+_modoNm+' con registros: ':'Rango elegido: ')+'<b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b> <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
+  var _rangoLbl=(_modoUltimo?'Mostrando <b>todos los días</b>':'Rango elegido: <b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b>')+' <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
 
   if(!notifFull.length){
     notifH='<div class="ind-title" style="display:flex;align-items:center;gap:10px">📋 Panel Operativo — Notificaciones</div>'+
@@ -2437,14 +2436,6 @@ function renderInd(){
       '<span>'+_rangoLbl+'</span>'+
       '<span style="margin-left:auto">Remitente</span><select onchange="nfSetRem(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit"><option value="">Todos</option>'+_remOpts.map(function(o){return'<option value="'+esc(o)+'"'+(o===_nfRem?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>'+
     '</div>';
-    var _inView={};notifAll2.forEach(function(r){_inView[r.key]=1;});
-    var _omOtras=notifFull.filter(function(r){return r.tif&&!_inView[r.key];});
-    if(_omOtras.length){
-      var _omDias=fechasDe(_omOtras);
-      notifH+='<div style="background:#FFF4DE;border:1px solid #FFA800;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12px;color:#7a4a00;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
-        '<span>⚠️ Hay <b>'+_omOtras.length+'</b> omisión(es) registradas en otras fechas ('+_omDias.map(esc).join(', ')+') que no se ven con el filtro actual.</span>'+
-        '<button onclick="nfSetRange(\'2000-01-01\',\'2100-01-01\')" style="margin-left:auto;background:#1BC5BD;color:#fff;border:none;padding:4px 12px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Ver todos los días</button></div>';
-    }
     notifH+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px">';
     // Revisor breakdown — calculado ANTES de las tarjetas KPI que lo usan
     var _jemimaT=notifAll2.filter(function(r){return r.val50==='Jemima Gonzales';}).length;
