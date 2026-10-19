@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB50</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB51</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 50;
+var BUILD_NUM = 51;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -3718,13 +3718,13 @@ function checkSaveReady(sec){
   var eduDone=rows.every(function(r){return r.val_ok;});
   // Check Jose 50%
   var joseRows=rows.filter(function(r){return r.val50==='Jose Gutierrez';});
-  var joseDone=joseRows.length>0&&joseRows.every(function(r){return r.jose_ok;});
+  var joseDone=joseRows.every(function(r){return r.jose_ok;});
   // Check Jemima 50%
   var jemimaRows=rows.filter(function(r){return r.val50==='Jemima Gonzales';});
-  var jemimaDone=jemimaRows.length>0&&jemimaRows.every(function(r){return r.jemima_ok;});
+  var jemimaDone=jemimaRows.every(function(r){return r.jemima_ok;});
   // Check Nestor 50%
   var nestorRows=rows.filter(function(r){return r.val50==='Nestor Rossell';});
-  var nestorDone=nestorRows.length>0&&nestorRows.every(function(r){return r.nestor_ok;});
+  var nestorDone=nestorRows.every(function(r){return r.nestor_ok;});
   // Update save buttons
   var btnEdu=document.getElementById('btn-save-edu');
   var btnJose=document.getElementById('btn-save-jose');
@@ -3732,9 +3732,9 @@ function checkSaveReady(sec){
   var btnNestor=document.getElementById('btn-save-nestor');
   var btnAll=document.getElementById('btn-save-all');
   if(btnEdu)btnEdu.style.display=eduDone?'inline-flex':'none';
-  if(btnJose)btnJose.style.display=joseDone?'inline-flex':'none';
-  if(btnJemima)btnJemima.style.display=jemimaDone?'inline-flex':'none';
-  if(btnNestor)btnNestor.style.display=nestorDone?'inline-flex':'none';
+  if(btnJose)btnJose.style.display=(joseDone&&joseRows.length)?'inline-flex':'none';
+  if(btnJemima)btnJemima.style.display=(jemimaDone&&jemimaRows.length)?'inline-flex':'none';
+  if(btnNestor)btnNestor.style.display=(nestorDone&&nestorRows.length)?'inline-flex':'none';
   var allDone=eduDone&&joseDone&&jemimaDone&&nestorDone;
   if(btnAll)btnAll.style.display=allDone?'inline-flex':'none';
   // Update pill counts only - don't touch _avance.rows
