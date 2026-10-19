@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB51</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB52</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 51;
+var BUILD_NUM = 52;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2037,7 +2037,16 @@ function buildTifChart(rows){
 var _nfDesde='',_nfHasta='',_nfRem='';
 function nfSetRem(v){_nfRem=v;renderInd();}
 function _isoToDate(s){var p=String(s).split('-');return new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));}
-function nfSetRange(d,h){if(d!==null)_nfDesde=d;if(h!==null)_nfHasta=h;renderInd();}
+function nfSetRange(d,h){arrSetRange(d,h);}
+// Un solo filtro de fechas (el de "Notificaciones recibidas") manda sobre todo el panel.
+function _isoOf(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function _periodSpan(mode,d){
+  if(mode==='week'){var df=d.getDay()===0?-6:1-d.getDay();var a=new Date(d.getFullYear(),d.getMonth(),d.getDate()+df);return[a,new Date(a.getFullYear(),a.getMonth(),a.getDate()+6)];}
+  if(mode==='month')return[new Date(d.getFullYear(),d.getMonth(),1),new Date(d.getFullYear(),d.getMonth()+1,0)];
+  if(mode==='year')return[new Date(d.getFullYear(),0,1),new Date(d.getFullYear(),11,31)];
+  return[d,d];
+}
+function arrPick(iso){var sp=_periodSpan(_arrMode||'day',_isoToDate(iso));_arrDesde=_isoOf(sp[0]);_arrHasta=_isoOf(sp[1]);renderInd();}
 
 // ── Gráfico: notificaciones recibidas, con fechas propias ──
 var _arrMode='day',_arrDesde='',_arrHasta='';
@@ -2105,10 +2114,10 @@ function buildArriboChart(rows){
     rems.forEach(function(l){
       var n=(rem[k]&&rem[k][l])||0;if(!n)return;
       var h=max?n/max*ch:0;acc+=h;
-      svg+='<rect x="'+x+'" y="'+(padT+ch-acc)+'" width="'+bw+'" height="'+h+'" fill="'+col[l]+'"><title>'+esc(lab[k])+' · '+esc(l)+': '+n+'</title></rect>';
+      svg+='<rect onclick="arrPick(\''+(srt[k]?_isoOf(srt[k]):'')+'\')" style="cursor:pointer" x="'+x+'" y="'+(padT+ch-acc)+'" width="'+bw+'" height="'+h+'" fill="'+col[l]+'"><title>'+esc(lab[k])+' · '+esc(l)+': '+n+'</title></rect>';
     });
     svg+='<text x="'+(x+bw/2)+'" y="'+(padT+ch-acc-5)+'" font-size="10" font-weight="700" fill="#042433" text-anchor="middle">'+map[k]+'</text>'+
-      '<text x="'+(x+bw/2)+'" y="'+(padT+ch+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(lab[k])+'</text>';
+      '<text onclick="arrPick(\''+(srt[k]?_isoOf(srt[k]):'')+'\')" style="cursor:pointer" x="'+(x+bw/2)+'" y="'+(padT+ch+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(lab[k])+'</text>';
   });
   svg+='</svg>';
   var legend='<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px;font-size:11px;color:#464E5F">'+rems.map(function(l){
@@ -2377,10 +2386,10 @@ function renderInd(){
   var notifFull=allNotif;
   var _maxD=null;
   notifFull.forEach(function(r){var d=parseDate(r.fc2);if(d&&(!_maxD||d>_maxD))_maxD=d;});
-  var _nfLo=_nfDesde?_isoToDate(_nfDesde):null;
-  var _nfHi=_nfHasta?_isoToDate(_nfHasta):null;
+  var _nfLo=_arrDesde?_isoToDate(_arrDesde):null;
+  var _nfHi=_arrHasta?_isoToDate(_arrHasta):null;
   var _modoUltimo=!_nfLo&&!_nfHi;
-  if(_modoUltimo&&_maxD){_nfLo=_maxD;_nfHi=_maxD;}
+  if(_modoUltimo&&_maxD){var _spn=_periodSpan(_arrMode||'day',_maxD);_nfLo=_spn[0];_nfHi=_spn[1];}
   var notifAll2=notifFull.filter(function(r){
     if(!_nfLo&&!_nfHi)return true;
     var d=parseDate(r.fc2);
@@ -2391,9 +2400,9 @@ function renderInd(){
   }).filter(function(r){return !_nfRem||refLabel(r.referencia)===_nfRem;});
   var _remOpts=[];notifFull.forEach(function(r){var l=refLabel(r.referencia);if(_remOpts.indexOf(l)<0)_remOpts.push(l);});
   _remOpts.sort();
-  var _rangoLbl=_modoUltimo
-    ?(_maxD?'Último día con registros: <b>'+pad(_maxD.getDate())+'/'+pad(_maxD.getMonth()+1)+'/'+_maxD.getFullYear()+'</b>':'')
-    :'Rango elegido';
+  function _fd(d){return d?pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear():'…';}
+  var _modoNm={day:'último día',week:'última semana',month:'último mes',year:'último año'}[_arrMode||'day'];
+  var _rangoLbl=(_modoUltimo?'Mostrando el '+_modoNm+' con registros: ':'Rango elegido: ')+'<b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b> <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
 
   if(!notifFull.length){
     notifH='<div class="ind-title" style="display:flex;align-items:center;gap:10px">📋 Panel Operativo — Notificaciones</div>'+
@@ -2427,9 +2436,6 @@ function renderInd(){
     notifH+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;font-size:11.5px;color:var(--muted)">'+
       '<span>'+_rangoLbl+'</span>'+
       '<span style="margin-left:auto">Remitente</span><select onchange="nfSetRem(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit"><option value="">Todos</option>'+_remOpts.map(function(o){return'<option value="'+esc(o)+'"'+(o===_nfRem?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>'+
-      '<span>Desde</span><input type="date" value="'+(_nfDesde||'')+'" onchange="nfSetRange(this.value,null)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit">'+
-      '<span>Hasta</span><input type="date" value="'+(_nfHasta||'')+'" onchange="nfSetRange(null,this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit">'+
-      '<button onclick="nfSetRange(\'\',\'\')" style="padding:4px 10px;border-radius:7px;border:1px solid '+(_modoUltimo?'#1BC5BD':'var(--border)')+';background:'+(_modoUltimo?'#1BC5BD':'#fff')+';color:'+(_modoUltimo?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Último día</button>'+
     '</div>';
     var _inView={};notifAll2.forEach(function(r){_inView[r.key]=1;});
     var _omOtras=notifFull.filter(function(r){return r.tif&&!_inView[r.key];});
@@ -2715,8 +2721,8 @@ function renderInd(){
     if(!detRows.length)notifH+='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--muted)">'+(omActive.length?'Ninguna omisión coincide con los filtros':'Sin omisiones registradas')+'</td></tr>';
     notifH+='</tbody></table></div></div>';
 
-    // ── Bajas gestionadas (todas, sin depender del filtro de fechas) ──
-    var bajas=notifFull.filter(bajaVig).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
+    // ── Bajas gestionadas (siguen el mismo filtro de fechas del panel) ──
+    var bajas=notifAll2.filter(bajaVig).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
     notifH+='<div style="margin-bottom:18px">'+
       '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">⬇️ Bajas gestionadas <span style="background:#fed7d7;color:#9b2c2c;border-radius:10px;padding:1px 9px;margin-left:4px">'+bajas.length+'</span></div>'+
       '<div style="overflow:auto;max-height:360px;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
