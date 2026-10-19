@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-16-FB49</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-19-FB50</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -352,6 +352,7 @@ tr:hover td{background:#f7faff}
 <div id="notif-lock-banner"  style="background:#fef3c7;border:1px solid #f6e05e;border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12.5px;color:#744210;font-weight:500">
       ⚠️ Carga los <b>3 reportes de notificaciones</b> para habilitar las validaciones.
       Faltan: <span id="notif-slots-faltantes">Notif. 1, Notif. 2, Notif. 3</span>
+      <button id="notif-hab-btn" class="btn" onclick="habilitarDia()" style="display:none;margin-left:10px;padding:3px 10px;font-size:11.5px" title="Úsalo si ese día no llegaron los demás tipos de notificación">✔ Ese día solo hubo estas notificaciones: habilitar</button>
     </div>
   <div class="search-bar">
     <input class="sb-input" id="fB-notif" type="text" placeholder="Buscar en todas las columnas..." oninput="paint('notif')">
@@ -586,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 49;
+var BUILD_NUM = 50;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1278,6 +1279,18 @@ function viewRows(){
   if(!d||d===NUEVO)return [];
   return SEC.notif.rows.filter(function(r){return fechaDiaR(r)===d;});
 }
+// Día con menos de 3 reportes (p. ej. ese día solo llegó 1 tipo de notificación):
+// se habilita a mano. S._diaHab[fecha]={by,ts,on}
+function diaHab(d){var h=((SEC.notif||{})._diaHab||{})[d];return !!(h&&h.on);}
+function habilitarDia(){
+  var d=curDay();if(!d||d===NUEVO)return;
+  var S=SEC.notif;
+  var falt=[];['N1n','N2n','N3n'].forEach(function(k,i){if(!viewSlotLoaded(k))falt.push('Notif. '+(i+1));});
+  if(!confirm('¿Confirmas que el '+d+' NO tuvo '+falt.join(' ni ')+'?\n\nSe habilitarán las validaciones con los reportes que ya cargaste.'))return;
+  S._diaHab=S._diaHab||{};S._diaHab[d]={by:CURRENT_USER||'—',ts:Date.now(),on:true};
+  lsSave();refreshSec('notif');
+  toast('✅ '+d+' habilitado con los reportes cargados.','ok');
+}
 function viewSlotLoaded(s){return viewRows().some(function(r){return r.slot===s;});}
 function setViewDay(d){
   setViewDayVar(d);
@@ -1556,7 +1569,7 @@ function refreshSec(sec){
     try{foldRezagados();}catch(e){}
     // Show/hide lock banner (no aplica a un día que ya tiene reportes archivados)
     var _vd=curDay();
-    var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'))||(_vd&&_vd!==NUEVO&&diaTieneArchivo(_vd));
+    var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'))||(_vd&&_vd!==NUEVO&&(diaTieneArchivo(_vd)||(diaHab(_vd)&&viewRows().length>0)));
     var banner=document.getElementById('notif-lock-banner');
     if(banner){
       banner.style.display=allLoaded?'none':'block';
@@ -1567,6 +1580,7 @@ function refreshSec(sec){
         if(!viewSlotLoaded('N3n'))missing.push('Notif. 3');
         var mEl=document.getElementById('notif-slots-faltantes');
         if(mEl)mEl.textContent=missing.join(', ');
+        var hb=document.getElementById('notif-hab-btn');if(hb)hb.style.display=(_vd&&_vd!==NUEVO&&viewRows().length)?'inline-block':'none';
       }
     }
     // Update leyenda
@@ -3693,7 +3707,8 @@ function toastSave(name){
   toast('✅ Validación de '+name+' guardada!','ok');
 }
 function allNotifLoaded(){
-  return !!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'));
+  var _d=curDay();
+  return !!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'))||!!(_d&&_d!==NUEVO&&diaHab(_d)&&viewRows().length>0);
 }
 function checkSaveReady(sec){
   if(sec!=='notif')return;
@@ -4259,6 +4274,7 @@ function mergeSecSmartJS(old,newSec){
   // Lápidas de "Borrar un día": se unen y se purga lo anterior a la lápida
   newSec._dayDel=mergeAvDel(old._dayDel,newSec._dayDel);
   newSec._dayOwner=mergeOwners(old._dayOwner,newSec._dayOwner);
+  newSec._diaHab=mergeOwners(old._diaHab,newSec._diaHab);
   purgeDays(newSec);
   newSec._minBuild=Math.max(old._minBuild||0,newSec._minBuild||0);
   newSec._resetAt=Math.max(old._resetAt||0,newSec._resetAt||0);
@@ -4602,6 +4618,7 @@ function fbApplyIncoming(sec,gs){
   Sx._dayDel=mergeAvDel(Sx._dayDel,gs._dayDel);
   var _ownPrev=JSON.parse(JSON.stringify(Sx._dayOwner||{}));
   Sx._dayOwner=mergeOwners(Sx._dayOwner,gs._dayOwner);
+  Sx._diaHab=mergeOwners(Sx._diaHab,gs._diaHab);
   if(sec==='notif'&&typeof CURRENT_USER!=='undefined'){
     Object.keys(Sx._dayOwner).forEach(function(dd){
       var n=Sx._dayOwner[dd],o=_ownPrev[dd];
@@ -4937,6 +4954,7 @@ function lsLoad(){
       if(d._avDel)SEC[sec]._avDel=d._avDel;
       if(d._dayDel)SEC[sec]._dayDel=d._dayDel;
       if(d._dayOwner)SEC[sec]._dayOwner=d._dayOwner;
+      if(d._diaHab)SEC[sec]._diaHab=d._diaHab;
       if(d._avances)SEC[sec]._avances=normAvances(d._avances,d._avDel);
       // Migración: versiones previas guardaban un solo "_avance" (singular)
       else if(d._avance&&d._avance.total>0){
