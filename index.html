@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-21-FB54</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-22-FB55</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 54;
+var BUILD_NUM = 55;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2000,7 +2000,7 @@ function buildTifChart(rows){
     var tot=0;Object.keys(dateMap[d]).forEach(function(t){tot+=dateMap[d][t];});
     if(tot>maxTotal)maxTotal=tot;
   });
-  var W=Math.max(560,dates.length*70+80),H=260,padL=40,padB=44,padT=14,padR=14;
+  var W=Math.max(560,dates.length*70+80),H=260,padL=40,padB=44,padT=22,padR=14;
   var chartW=W-padL-padR,chartH=H-padT-padB;
   var barW=Math.min(46,chartW/dates.length*0.6);
   var step=chartW/dates.length;
@@ -2021,7 +2021,10 @@ function buildTifChart(rows){
       var h=maxTotal?(v/maxTotal*chartH):0;
       yCursor-=h;
       svg+='<rect x="'+x+'" y="'+yCursor+'" width="'+barW+'" height="'+h+'" fill="'+colorOf[t]+'"><title>'+esc(t)+': '+v+'</title></rect>';
+      if(h>=12)svg+='<text x="'+(x+barW/2)+'" y="'+(yCursor+h/2+3.5)+'" font-size="9.5" font-weight="700" fill="#fff" text-anchor="middle">'+v+'</text>';
     });
+    var _totD=0;Object.keys(dateMap[d]).forEach(function(t){_totD+=dateMap[d][t];});
+    svg+='<text x="'+(x+barW/2)+'" y="'+(yCursor-4)+'" font-size="10" font-weight="700" fill="#042433" text-anchor="middle">'+_totD+'</text>';
     svg+='<text x="'+(x+barW/2)+'" y="'+(padT+chartH+16)+'" font-size="9" fill="#464E5F" text-anchor="middle">'+esc(periodLabel[d]||d)+'</text>';
   });
   svg+='</svg>';
@@ -2046,7 +2049,7 @@ function _periodSpan(mode,d){
   if(mode==='year')return[new Date(d.getFullYear(),0,1),new Date(d.getFullYear(),11,31)];
   return[d,d];
 }
-function arrPick(iso){var sp=_periodSpan(_arrMode||'day',_isoToDate(iso));_arrDesde=_isoOf(sp[0]);_arrHasta=_isoOf(sp[1]);renderInd();}
+function arrPick(iso){_arrTodo=false;var sp=_periodSpan(_arrMode||'day',_isoToDate(iso));_arrDesde=_isoOf(sp[0]);_arrHasta=_isoOf(sp[1]);renderInd();}
 
 // ── Gráfico: notificaciones recibidas, con fechas propias ──
 var _arrMode='day',_arrDesde='',_arrHasta='';
@@ -2066,7 +2069,11 @@ function indAvisoHTML(nDias,nPend){
     '<button onclick="indToggleTodo()" style="padding:4px 12px;border-radius:7px;border:1px solid #1BC5BD;background:#fff;color:#042433;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+(_indVerTodo?'Mostrar solo las últimas 2 semanas':'Ver semanas anteriores')+'</button></div>';
 }
 function arrSetMode(m){_arrMode=m;renderInd();}
-function arrSetRange(d,h){if(d!==null)_arrDesde=d;if(h!==null)_arrHasta=h;renderInd();}
+var _arrTodo=false;
+function arrSetRange(d,h){_arrTodo=false;if(d!==null)_arrDesde=d;if(h!==null)_arrHasta=h;renderInd();}
+function arrVerTodo(){_arrTodo=true;_arrDesde='';_arrHasta='';renderInd();}
+// Día hábil (lun-vie) que queda n días hábiles antes de hoy.
+function diaHabilAntes(n){var d=new Date();d.setHours(0,0,0,0);while(n>0){d.setDate(d.getDate()-1);if(d.getDay()!==0&&d.getDay()!==6)n--;}return d;}
 function buildArriboChart(rows){
   var mode=_arrMode||'day';
   var modes=[{k:'day',l:'Día'},{k:'week',l:'Semana'},{k:'month',l:'Mes'},{k:'year',l:'Año'}];
@@ -2076,7 +2083,7 @@ function buildArriboChart(rows){
     '<div style="font-size:12px;font-weight:700;color:#042433;text-transform:uppercase;letter-spacing:.03em">📥 Notificaciones recibidas</div>'+
     '<span style="margin-left:auto;font-size:11.5px;color:var(--muted)">Desde</span><input type="date" value="'+(_arrDesde||'')+'" onchange="arrSetRange(this.value,null)" style="'+inp+'">'+
     '<span style="font-size:11.5px;color:var(--muted)">Hasta</span><input type="date" value="'+(_arrHasta||'')+'" onchange="arrSetRange(null,this.value)" style="'+inp+'">'+
-    '<button onclick="arrSetRange(\'\',\'\')" title="Quitar fechas" style="padding:4px 9px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;font-family:inherit">✕</button>'+
+    '<button onclick="arrSetRange(\'\',\'\')" title="Quitar fechas (vuelve a lo predeterminado)" style="padding:4px 9px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;font-family:inherit">✕</button>'+
     '<div style="display:flex;gap:4px">'+modes.map(function(m){
       return'<button onclick="arrSetMode(\''+m.k+'\')" style="padding:4px 12px;border-radius:7px;border:1px solid '+(mode===m.k?'#1BC5BD':'var(--border)')+';background:'+(mode===m.k?'#1BC5BD':'#fff')+';color:'+(mode===m.k?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">'+m.l+'</button>';
     }).join('')+'</div></div>';
@@ -2085,18 +2092,15 @@ function buildArriboChart(rows){
   rows.forEach(function(r){
     var d=parseDate(r.fc2);if(!d)return;
     if(lo&&d<lo)return;if(hi&&d>hi)return;
-    if(!_usaRango&&!_indVerTodo){
-      var _sk=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
-      if(_sk<_cut){_oldD[_sk]=1;return;}
-    }
     var p=_tifPeriodOf(r.fc2,mode);
     var l=refLabel(r.referencia);
     map[p.key]=(map[p.key]||0)+1;lab[p.key]=p.label;srt[p.key]=p.sortDate;
     rem[p.key]=rem[p.key]||{};rem[p.key][l]=(rem[p.key][l]||0)+1;remTot[l]=(remTot[l]||0)+1;
   });
-  var keys=Object.keys(map).sort(function(a,b){return srt[b]-srt[a];}); // más reciente primero
-  var _nOld=Object.keys(_oldD).length;
-  var box='<div style="margin-bottom:18px">'+head+(_usaRango?'':indAvisoHTML(_nOld,0).replace('(todo completo)','').replace(' que no se muestran (se ven las últimas 2 semanas)',' no se muestran aquí (se ven las últimas 2 semanas)'));
+  // Más antiguo a la izquierda, más nuevo a la derecha. Sin rango elegido: solo los últimos 5 periodos.
+  var keys=Object.keys(map).sort(function(a,b){return srt[a]-srt[b];});
+  if(!_usaRango&&keys.length>5){keys.slice(0,keys.length-5).forEach(function(k){delete map[k];});keys=keys.slice(-5);}
+  var box='<div style="margin-bottom:18px">'+head+(_usaRango?'':'<div style="font-size:11px;color:var(--muted);margin:-2px 0 8px">Se muestran los últimos 5 '+({day:'días',week:'semanas',month:'meses',year:'años'}[mode])+' con registros. Elige fechas para ver otro rango.</div>');
   if(!keys.length)return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:24px;text-align:center;color:var(--muted);font-size:12px">Sin notificaciones en el rango elegido</div></div>';
   var rems=Object.keys(remTot).sort(function(a,b){return remTot[b]-remTot[a];});
   var pal=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#4a5568'];
@@ -2131,8 +2135,25 @@ function buildArriboChart(rows){
         return'<span style="background:#f4f6f9;border-left:3px solid '+col[l]+';padding:2px 8px;border-radius:5px"><b style="color:#042433">'+rem[k][l]+'</b> '+esc(l)+'</span>';
       }).join('')+'</div>';
   }).join('')+'</div>';
+  // Resumen lateral: últimas 5 semanas y últimos 5 meses (totales y por remitente)
+  function _sumPer(m,n){
+    var mp={},lb={},st={},rm={};
+    rows.forEach(function(r){var pp=_tifPeriodOf(r.fc2,m);if(!pp.sortDate)return;var l=refLabel(r.referencia);
+      mp[pp.key]=(mp[pp.key]||0)+1;lb[pp.key]=pp.label;st[pp.key]=pp.sortDate;rm[pp.key]=rm[pp.key]||{};rm[pp.key][l]=(rm[pp.key][l]||0)+1;});
+    var ks=Object.keys(mp).sort(function(a,b){return st[a]-st[b];}).slice(-n);
+    var h='';
+    ks.forEach(function(k){
+      var ttl=m==='week'?('Semana del '+pad(st[k].getDate())+'/'+pad(st[k].getMonth()+1)+' al '+(function(e){return pad(e.getDate())+'/'+pad(e.getMonth()+1);})(new Date(st[k].getFullYear(),st[k].getMonth(),st[k].getDate()+6))):lb[k];
+      h+='<div style="padding:6px 0;border-bottom:1px solid #eef1f5;font-size:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b style="color:#042433">'+esc(ttl)+'</b><b style="color:#042433">'+mp[k]+'</b></div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:3px">'+Object.keys(rm[k]).sort(function(a,b){return rm[k][b]-rm[k][a];}).map(function(l){return '<span style="background:#f4f6f9;border-left:3px solid '+(col[l]||'#999')+';padding:1px 7px;border-radius:5px;font-size:11px"><b>'+rm[k][l]+'</b> '+esc(l)+'</span>';}).join('')+'</div></div>';
+    });
+    return h||'<div style="color:var(--muted);font-size:12px;padding:6px 0">Sin datos</div>';
+  }
+  var _resumen='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px">'+
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px 16px"><div style="font-size:11.5px;font-weight:700;color:#042433;text-transform:uppercase;margin-bottom:4px">📅 Últimas 5 semanas</div>'+_sumPer('week',5)+'</div>'+
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px 16px"><div style="font-size:11.5px;font-weight:700;color:#042433;text-transform:uppercase;margin-bottom:4px">🗓️ Últimos 5 meses</div>'+_sumPer('month',5)+'</div></div>';
   return box+'<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px">'+legend+svg+det+
-    '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f5;font-size:11px;color:var(--muted)">Total en el rango: <b style="color:#042433">'+total+'</b> notificaciones</div></div></div>';
+    '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f5;font-size:11px;color:var(--muted)">Total en el rango: <b style="color:#042433">'+total+'</b> notificaciones</div></div>'+_resumen+'</div>';
 }
 var _remDesde='',_remHasta='';
 function remSetRange(d,h){if(d!==null)_remDesde=d;if(h!==null)_remHasta=h;renderInd();}
@@ -2388,7 +2409,11 @@ function renderInd(){
   notifFull.forEach(function(r){var d=parseDate(r.fc2);if(d&&(!_maxD||d>_maxD))_maxD=d;});
   var _nfLo=_arrDesde?_isoToDate(_arrDesde):null;
   var _nfHi=_arrHasta?_isoToDate(_arrHasta):null;
-  var _modoUltimo=!_nfLo&&!_nfHi;
+  var _modoUltimo=!_nfLo&&!_nfHi&&!_arrTodo;
+  // Por defecto: el 3.er día hábil antes de hoy (plazo para tener todo validado al 100%),
+  // acotado por el modo Día/Semana/Mes/Año. "Ver todo el histórico" quita el corte.
+  var _corte=diaHabilAntes(3);
+  if(_modoUltimo){var _spn=_periodSpan(_arrMode||'day',_corte);_nfLo=_spn[0];_nfHi=_spn[1]>_corte?_corte:_spn[1];}
   var notifAll2=notifFull.filter(function(r){
     if(!_nfLo&&!_nfHi)return true;
     var d=parseDate(r.fc2);
@@ -2400,8 +2425,7 @@ function renderInd(){
   var _remOpts=[];notifFull.forEach(function(r){var l=refLabel(r.referencia);if(_remOpts.indexOf(l)<0)_remOpts.push(l);});
   _remOpts.sort();
   function _fd(d){return d?pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear():'…';}
-  var _modoNm={day:'último día',week:'última semana',month:'último mes',year:'último año'}[_arrMode||'day'];
-  var _rangoLbl=(_modoUltimo?'Mostrando <b>todos los días</b>':'Rango elegido: <b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b>')+' <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
+  var _rangoLbl=(_arrTodo?'Mostrando <b>todo el histórico</b>':_modoUltimo?'Al día hasta el <b>'+_fd(_corte)+'</b> (3 días hábiles antes de hoy; periodo: '+_fd(_nfLo)+(_isoOf(_nfLo)===_isoOf(_nfHi)?'':' → '+_fd(_nfHi))+')':'Rango elegido: <b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b>')+' <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
 
   if(!notifFull.length){
     notifH='<div class="ind-title" style="display:flex;align-items:center;gap:10px">📋 Panel Operativo — Notificaciones</div>'+
@@ -2434,7 +2458,7 @@ function renderInd(){
     '</div>';
     notifH+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;font-size:11.5px;color:var(--muted)">'+
       '<span>'+_rangoLbl+'</span>'+
-      '<span style="margin-left:auto">Remitente</span><select onchange="nfSetRem(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit"><option value="">Todos</option>'+_remOpts.map(function(o){return'<option value="'+esc(o)+'"'+(o===_nfRem?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>'+
+      '<button onclick="arrVerTodo()" style="margin-left:auto;padding:4px 10px;border-radius:7px;border:1px solid '+(_arrTodo?'#1BC5BD':'var(--border)')+';background:'+(_arrTodo?'#1BC5BD':'#fff')+';color:'+(_arrTodo?'#fff':'var(--text)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Ver todo el histórico</button><span>Remitente</span><select onchange="nfSetRem(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit"><option value="">Todos</option>'+_remOpts.map(function(o){return'<option value="'+esc(o)+'"'+(o===_nfRem?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>'+
     '</div>';
     notifH+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px">';
     // Revisor breakdown — calculado ANTES de las tarjetas KPI que lo usan
@@ -2624,31 +2648,35 @@ function renderInd(){
     notifH+=buildArriboChart(notifFull);
 
     // ── Resumen por tipificación: SOLO omisiones (con tipificación), por tipificación, subtipificación y día ──
-    var tifMap={};
+    // ── Resumen por tipificación: barras por tipificación, segmentadas por subtipificación ──
+    var tifG={},stifTot={};
     notifAll2.forEach(function(r){
       if(!r.tif)return;
-      var dia=fechaDiaR(r),st=r.stif||'—',k=r.tif+'||'+st+'||'+dia;
-      if(!tifMap[k])tifMap[k]={tif:r.tif,stif:st,dia:dia,sk:fechaSortKey(dia),n:0};
-      tifMap[k].n++;
+      var st=r.stif||'—';
+      tifG[r.tif]=tifG[r.tif]||{tif:r.tif,n:0,st:{}};
+      tifG[r.tif].n++;tifG[r.tif].st[st]=(tifG[r.tif].st[st]||0)+1;
+      stifTot[st]=(stifTot[st]||0)+1;
     });
-    var tifRows=Object.values(tifMap).sort(function(a,b){return (b.sk-a.sk)||a.tif.localeCompare(b.tif)||a.stif.localeCompare(b.stif);});
+    var tifList=Object.values(tifG).sort(function(a,b){return b.n-a.n||a.tif.localeCompare(b.tif);});
+    var stifOrd=Object.keys(stifTot).sort(function(a,b){return stifTot[b]-stifTot[a]||a.localeCompare(b);});
+    var stPal=['#1BC5BD','#553c9a','#c05621','#0e7490','#b45309','#9f1239','#166534','#1e40af','#7c3aed','#be185d','#0f766e','#a16207','#475569'];
+    var stCol={};stifOrd.forEach(function(k,i){stCol[k]=stPal[i%stPal.length];});
+    var tifMaxN=tifList.length?tifList[0].n:1;
     notifH+='<div style="margin-bottom:18px">'+
-      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📊 Resumen por tipificación</div>'+
-      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">'+
-      '<thead><tr style="background:#042433;color:#fff;text-align:left">'+
-        '<th style="padding:7px 10px">Tipificación</th><th style="padding:7px 10px">Subtipificación</th>'+
-        '<th style="padding:7px 10px">Día</th><th style="padding:7px 10px;text-align:center">N.º</th>'+
-      '</tr></thead><tbody>';
-    if(!tifRows.length)notifH+='<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--muted)">Sin omisiones registradas</td></tr>';
-    tifRows.forEach(function(t,i){
-      notifH+='<tr style="background:'+(i%2?'#f7f9fb':'#fff')+';border-bottom:1px solid #eef1f5">'+
-        '<td style="padding:6px 10px;font-weight:600">'+esc(t.tif)+'</td>'+
-        '<td style="padding:6px 10px">'+esc(t.stif)+'</td>'+
-        '<td style="padding:6px 10px;white-space:nowrap">'+esc(t.dia)+'</td>'+
-        '<td style="padding:6px 10px;text-align:center;font-weight:700">'+t.n+'</td>'+
-      '</tr>';
-    });
-    notifH+='</tbody></table></div></div>';
+      '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">📊 Resumen por tipificación <span style="font-weight:500;color:var(--muted);text-transform:none">· cada color es una subtipificación</span></div>'+
+      '<div style="background:#fff;border:1px solid var(--border);border-radius:9px;padding:14px 16px">'+
+      (tifList.length?tifList.map(function(t){
+        var segs=Object.keys(t.st).sort(function(a,b){return t.st[b]-t.st[a];}).map(function(k){
+          var w=t.st[k]/tifMaxN*100;
+          return '<div title="'+esc(k)+': '+t.st[k]+'" style="width:'+w+'%;min-width:'+(w>0?'18':'0')+'px;background:'+stCol[k]+';color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">'+t.st[k]+'</div>';
+        }).join('');
+        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px"><div style="width:210px;flex:none;font-size:11.5px;font-weight:600;color:#042433;line-height:1.25">'+esc(t.tif)+'</div>'+
+          '<div style="flex:1;display:flex;height:22px;border-radius:5px;overflow:hidden;background:#f4f6f9">'+segs+'</div>'+
+          '<div style="width:34px;flex:none;text-align:right;font-weight:700;font-size:12px;color:#042433">'+t.n+'</div></div>';
+      }).join('')+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;padding-top:10px;border-top:1px solid #eef1f5">'+stifOrd.map(function(k){return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#464E5F"><span style="width:10px;height:10px;border-radius:2px;background:'+stCol[k]+'"></span>'+esc(k)+' <b style="color:#042433">'+stifTot[k]+'</b></span>';}).join('')+'</div>'
+      :'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Sin omisiones registradas en este periodo</div>')+
+      '</div></div>';
 
     // ── Detalle: solo las OMISIONES (resoluciones con tipificación registrada) ──
     var detRows=notifAll2.filter(function(r){return !!r.tif;}).sort(function(a,b){
@@ -3238,7 +3266,7 @@ function bajaClick(ev,el){
 }
 // Remitente / procedencia de la resolución (campo REFERENCIA del reporte).
 // Para renombrar un código basta editar REF_ETIQUETAS.
-var REF_ETIQUETAS={'108030':'Casilla 108030','1692':'Casilla 1692'};
+var REF_ETIQUETAS={'108030':'Casilla 108030','108040':'Casilla 108030','1692':'Casilla 1692'};
 function refLabel(v){
   v=String(v==null?'':v).trim();
   if(!v)return 'Sin referencia';
