@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-22-FB55</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-22-FB56</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 55;
+var BUILD_NUM = 56;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2422,10 +2422,12 @@ function renderInd(){
     if(_nfHi&&d>_nfHi)return false;
     return true;
   }).filter(function(r){return !_nfRem||refLabel(r.referencia)===_nfRem;});
+  // Omisiones y bajas son registros acumulados: sin fechas elegidas se ven TODAS; con fechas/clic en barra/Ver todo siguen el filtro.
+  var notifOm=_modoUltimo?notifFull.filter(function(r){return !_nfRem||refLabel(r.referencia)===_nfRem;}):notifAll2;
   var _remOpts=[];notifFull.forEach(function(r){var l=refLabel(r.referencia);if(_remOpts.indexOf(l)<0)_remOpts.push(l);});
   _remOpts.sort();
   function _fd(d){return d?pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear():'…';}
-  var _rangoLbl=(_arrTodo?'Mostrando <b>todo el histórico</b>':_modoUltimo?'Al día hasta el <b>'+_fd(_corte)+'</b> (3 días hábiles antes de hoy; periodo: '+_fd(_nfLo)+(_isoOf(_nfLo)===_isoOf(_nfHi)?'':' → '+_fd(_nfHi))+')':'Rango elegido: <b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b>')+' <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
+  var _rangoLbl=(_arrTodo?'Mostrando <b>todo el histórico</b>':_modoUltimo?'Al día hasta el <b>'+_fd(_corte)+'</b> (3 días hábiles antes de hoy; periodo: '+_fd(_nfLo)+(_isoOf(_nfLo)===_isoOf(_nfHi)?'':' → '+_fd(_nfHi))+'). Omisiones y bajas: todo el histórico hasta que elijas fechas':'Rango elegido: <b>'+(_nfLo&&_nfHi&&_isoOf(_nfLo)===_isoOf(_nfHi)?_fd(_nfLo):_fd(_nfLo)+' → '+_fd(_nfHi))+'</b>')+' <span style="font-weight:400">· el filtro de «Notificaciones recibidas» (Día/Semana/Mes/Año, fechas o clic en una barra) aplica a todo este panel</span>';
 
   if(!notifFull.length){
     notifH='<div class="ind-title" style="display:flex;align-items:center;gap:10px">📋 Panel Operativo — Notificaciones</div>'+
@@ -2650,7 +2652,7 @@ function renderInd(){
     // ── Resumen por tipificación: SOLO omisiones (con tipificación), por tipificación, subtipificación y día ──
     // ── Resumen por tipificación: barras por tipificación, segmentadas por subtipificación ──
     var tifG={},stifTot={};
-    notifAll2.forEach(function(r){
+    notifOm.forEach(function(r){
       if(!r.tif)return;
       var st=r.stif||'—';
       tifG[r.tif]=tifG[r.tif]||{tif:r.tif,n:0,st:{}};
@@ -2679,7 +2681,7 @@ function renderInd(){
       '</div></div>';
 
     // ── Detalle: solo las OMISIONES (resoluciones con tipificación registrada) ──
-    var detRows=notifAll2.filter(function(r){return !!r.tif;}).sort(function(a,b){
+    var detRows=notifOm.filter(function(r){return !!r.tif;}).sort(function(a,b){
       // más reciente primero (por día de notificación), luego tipificación y subtipificación
       return (fechaSortKey(fechaDiaR(b))-fechaSortKey(fechaDiaR(a)))||(a.tif||'').localeCompare(b.tif||'')||(a.stif||'').localeCompare(b.stif||'');
     });
@@ -2741,7 +2743,7 @@ function renderInd(){
     notifH+='</tbody></table></div></div>';
 
     // ── Bajas gestionadas (siguen el mismo filtro de fechas del panel) ──
-    var bajas=notifAll2.filter(bajaVig).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
+    var bajas=notifOm.filter(bajaVig).sort(function(a,b){return (b.baja_ts||0)-(a.baja_ts||0);});
     notifH+='<div style="margin-bottom:18px">'+
       '<div style="font-size:12px;font-weight:700;color:#042433;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">⬇️ Bajas gestionadas <span style="background:#fed7d7;color:#9b2c2c;border-radius:10px;padding:1px 9px;margin-left:4px">'+bajas.length+'</span></div>'+
       '<div style="overflow:auto;max-height:360px;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
