@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-22-FB56</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-26-FB57</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 56;
+var BUILD_NUM = 57;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -3268,14 +3268,13 @@ function bajaClick(ev,el){
 }
 // Remitente / procedencia de la resolución (campo REFERENCIA del reporte).
 // Para renombrar un código basta editar REF_ETIQUETAS.
-var REF_ETIQUETAS={'108030':'Casilla 108030','108040':'Casilla 108030','1692':'Casilla 1692'};
+var REF_ETIQUETAS={'108030':'Casilla 108030','108040':'Casilla 108030','18030':'Casilla 108030','1692':'Casilla 1692'};
 function refLabel(v){
   v=String(v==null?'':v).trim();
   if(!v)return 'Sin referencia';
   if(REF_ETIQUETAS[v])return REF_ETIQUETAS[v];
   if(/^tc$/i.test(v)||/casilla\s*tc/i.test(v))return 'Casilla TC';
-  if(/f[ií]sic/i.test(v))return 'Notificación física';
-  if(/juan\s+jos[eé]\s+edquen/i.test(v))return 'Juan Jose Edquen';
+  if(/f[ií]sic/i.test(v)||/juan\s*jos[eé]?(\s+edquen)?|juanjo/i.test(v))return 'CASILLA FÍSICA';
   return v;
 }
 // Quién identificó el error (lista fija del equipo)
