@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-26-FB57</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB58</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 57;
+var BUILD_NUM = 58;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -835,7 +835,17 @@ function processFile(file,tipo,slotId,sec){
       }else S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
-      nuevos.forEach(function(r){if(ex[r.key])dup++;else{S.rows.push(r);ag++;}});
+      // La clave es slot|id|exp (sin fecha): un proceso que se vuelve a notificar otro día chocaba con la
+      // fila vieja y se DESCARTABA como "duplicado" (faltaban notificaciones). Ahora se conserva con clave propia.
+      var _otros=0;
+      nuevos.forEach(function(r){
+        if(ex[r.key]){
+          var k0=r.key,nk=k0+'~'+fechaDiaR(r)+'~'+rowHash(r.desc),n=1;
+          while(ex[nk]){n++;nk=k0+'~'+fechaDiaR(r)+'~'+rowHash(r.desc)+'#'+n;}
+          r.key=nk;_otros++;
+        }
+        ex[r.key]=1;S.rows.push(r);ag++;
+      });
       S.slotData[slotId]=nuevos;S.slotLoaded[slotId]=true;S.slotSaved[slotId]=false;
       S._slotUploader=S._slotUploader||{};
       S._slotUploader[slotId]=CURRENT_USER||'—';
@@ -862,7 +872,7 @@ function processFile(file,tipo,slotId,sec){
         if(_nds.length>1)_sepMsg=' · el archivo trae '+_nds.length+' fechas ('+_nds.join(', ')+'); cambia de día con los botones 📅';
       }
       refreshSec(sec);renderWF(sec);
-      toast('✅ '+ag+' cargados'+(dup?', '+dup+' duplicados omitidos':'')+_sepMsg);
+      toast('✅ '+ag+' cargados'+(_otros?' (incluye '+_otros+' procesos que ya tenían notificación en otro día)':'')+_sepMsg);
     }catch(err){toast('Error: '+err.message,'err');}
   };
   rd.readAsArrayBuffer(file);
