@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB59</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB60</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -319,6 +319,11 @@ tr:hover td{background:#f7faff}
       <div><label class="ulbl" id="lbl-N3n" ondragover="dragOver(event,'N3n')" ondragleave="dragLeave(event,'N3n')" ondrop="dropFile(event,'N3n','N','notif')"><span class="u-icon">📬</span><span class="u-check">✓</span><span id="lbl-N3n-txt">Notificaciones 3</span><input type="file" accept=".xlsx,.xls" onchange="loadFile(event,'N','N3n','notif')"></label></div>
     </div>
     <div class="wf-wrap" id="wfbar-notif"></div>
+    <div id="notif-del-rep" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted)">Borrar reporte cargado (del día que ves):
+      <button class="btn" onclick="borrarReporte('N1n')" style="padding:2px 9px;font-size:11px" title="Borra solo Notif. 1 de este día">🗑 Notif. 1</button>
+      <button class="btn" onclick="borrarReporte('N2n')" style="padding:2px 9px;font-size:11px" title="Borra solo Notif. 2 de este día">🗑 Notif. 2</button>
+      <button class="btn" onclick="borrarReporte('N3n')" style="padding:2px 9px;font-size:11px" title="Borra solo Notif. 3 de este día">🗑 Notif. 3</button>
+    </div>
   </div>
     <!-- 4ta píldora: avance guardado -->
     <div id="notif-owner-banner" style="display:none"></div>
@@ -587,7 +592,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 59;
+var BUILD_NUM = 60;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -4080,6 +4085,8 @@ function separarDiasActivos(){
 // Lápida por fecha en S._dayDel[fecha]=T. Se purga lo cargado ANTES de T
 // (filas sin _ld o con _ld<=T, avances con ts<=T); lo cargado después sobrevive.
 function purgeDays(S){
+  var rd=S&&S._repDel;
+  if(rd&&Object.keys(rd).length&&S.rows)S.rows=S.rows.filter(function(r){var t=rd[fechaDiaR(r)+'|'+r.slot];return !(t&&(r._ld||0)<=t);});
   var dd=S&&S._dayDel;if(!dd||!Object.keys(dd).length)return;
   function gone(r){var t=dd[fechaDiaR(r)];return !!t&&((r&&r._ld)||0)<=t;}
   if(S.rows)S.rows=S.rows.filter(function(r){return !gone(r);});
@@ -4125,6 +4132,25 @@ function showBorrarDia(){
   h+='<div style="text-align:right;margin-top:12px"><button class="btn bk" onclick="cerrarBorrarDia()">Cerrar</button></div></div>';
   o.innerHTML=h;o.onclick=function(e){if(e.target===o)cerrarBorrarDia();};
   document.body.appendChild(o);
+}
+// Lápida por día+reporte: S._repDel['dd/mm/aaaa|N3n']=T. Se purgan las filas ACTIVAS de ese reporte y día cargadas antes de T.
+function borrarReporte(slot){
+  var d=curDay(),S=SEC.notif;
+  if(!d||d===NUEVO){toast('Elige primero un día','warn');return;}
+  var lo=lockedByOther(d);if(lo){toast('🔒 '+fn1(lo.by)+' está trabajando el '+d+'. Usa "Tomar el día" para poder borrar.','warn');return;}
+  var rs=(S.rows||[]).filter(function(r){return r.slot===slot&&fechaDiaR(r)===d;});
+  if(!rs.length){toast('No hay '+(SLOT_BASE[slot]||slot)+' cargada el '+d,'warn');return;}
+  var conVal=rs.filter(function(r){return r.val_ok||r.jose_ok||r.jemima_ok||r.nestor_ok;}).length;
+  if(!confirm('¿Borrar '+(SLOT_BASE[slot]||slot)+' del '+d+'?\n\n• '+rs.length+' notificaciones'+(conVal?' ('+conVal+' con validaciones marcadas, se pierden)':'')+'\n\nNo toca los otros reportes ni los otros días. Podrás volver a cargarlo.'))return;
+  var mx=0;rs.forEach(function(r){if((r._ld||0)>mx)mx=r._ld||0;});
+  S._repDel=S._repDel||{};
+  S._repDel[d+'|'+slot]=Math.max(Date.now(),mx+1);
+  purgeDays(S);
+  if(Array.isArray(S.slotData[slot]))S.slotData[slot]=S.slotData[slot].filter(function(r){return fechaDiaR(r)!==d;});
+  if(!S.rows.some(function(r){return r.slot===slot;})){S.slotLoaded[slot]=false;S.slotSaved[slot]=false;}
+  lsSave();
+  refreshSec('notif');renderWF('notif');updateAvancePill();
+  toast('🗑 '+(SLOT_BASE[slot]||slot)+' del '+d+' borrada ('+rs.length+').','ok');
 }
 function borrarDia(d){
   var m=diasConDatos(),i=m[d];if(!i){cerrarBorrarDia();return;}
@@ -4335,6 +4361,7 @@ function mergeSecSmartJS(old,newSec){
   newSec.rows=finalRows.filter(function(r){return !archivedKeys[r.key]||oldKeyMap[r.key];});
   // Lápidas de "Borrar un día": se unen y se purga lo anterior a la lápida
   newSec._dayDel=mergeAvDel(old._dayDel,newSec._dayDel);
+  newSec._repDel=mergeAvDel(old._repDel,newSec._repDel);
   newSec._dayOwner=mergeOwners(old._dayOwner,newSec._dayOwner);
   newSec._diaHab=mergeOwners(old._diaHab,newSec._diaHab);
   purgeDays(newSec);
@@ -4678,6 +4705,7 @@ function fbApplyIncoming(sec,gs){
   // perder un avance recién guardado aquí que el servidor aún no devuelve)
   Sx._avDel=mergeAvDel(Sx._avDel,gs._avDel);
   Sx._dayDel=mergeAvDel(Sx._dayDel,gs._dayDel);
+  Sx._repDel=mergeAvDel(Sx._repDel,gs._repDel);
   var _ownPrev=JSON.parse(JSON.stringify(Sx._dayOwner||{}));
   Sx._dayOwner=mergeOwners(Sx._dayOwner,gs._dayOwner);
   Sx._diaHab=mergeOwners(Sx._diaHab,gs._diaHab);
@@ -5015,6 +5043,7 @@ function lsLoad(){
       if(d._savedAt)SEC[sec]._savedAt=d._savedAt;
       if(d._avDel)SEC[sec]._avDel=d._avDel;
       if(d._dayDel)SEC[sec]._dayDel=d._dayDel;
+      if(d._repDel)SEC[sec]._repDel=d._repDel;
       if(d._dayOwner)SEC[sec]._dayOwner=d._dayOwner;
       if(d._diaHab)SEC[sec]._diaHab=d._diaHab;
       if(d._avances)SEC[sec]._avances=normAvances(d._avances,d._avDel);
