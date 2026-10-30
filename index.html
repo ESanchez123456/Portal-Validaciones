@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB58</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB59</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -587,7 +587,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 58;
+var BUILD_NUM = 59;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1190,10 +1190,13 @@ function normNnotif(data,slotId){
     var nom=gf(r,'NOMBRE','nombre','Nombre','descripcion','DESCRIPCION');
     if(!id&&!exp)continue;
     var o=baseR('notif');
-    o.key='Nn|'+slotId+'|'+id+'|'+exp;o.src='Notificaciones';o.slot=slotId;
+    o.src='Notificaciones';o.slot=slotId;
     // Fecha from Excel field
     var fechaNotif=String(gf(r,'FECHA DE NOTIFICACION','fecha de notificacion','FECHA','fecha','Fecha')||'');
     o.fc2=fechaNotif||now();
+    // La clave lleva el DÍA: sin él, un proceso re-notificado chocaba con filas ya archivadas (hist/avances)
+    // y fbApplyIncoming lo quitaba creyendo que otro usuario lo había archivado.
+    o.key='Nn|'+slotId+'|'+id+'|'+exp+'|'+fechaDiaR(o);
     // Fuente = slot name + fecha del reporte
     o.fuenteLbl=SLOT_SHORT[slotId]+(fechaNotif?' '+fechaNotif:'');
     o.id=String(id);
