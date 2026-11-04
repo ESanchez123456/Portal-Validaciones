@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-10-30-FB60</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-04-FB61</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -339,6 +339,7 @@ tr:hover td{background:#f7faff}
     </div>
   <div class="toolbar" style="flex-wrap:wrap;gap:6px">
     <button class="btn bg" onclick="btnGuardarAvance()">💾 Guardar avance</button>
+    <button class="btn" id="btn-arch-completos" onclick="btnArchivarCompletos()" style="display:none;background:#fff;border:1px solid #1BC5BD;color:#042433" title="Pasa al histórico los días que ya están al 100% (liberan espacio y siguen contando en Indicadores)">📦 Archivar días completos</button>
     <button class="btn bk" onclick="btnSyncNow()" id="btn-sync-now">🔄 Sincronizar</button>
     <button class="btn bk" onclick="btnLimpiar('notif')">✕ Limpiar filtros</button>
     <button class="btn br" onclick="btnBorrar('notif')">🗑 Borrar base</button>
@@ -592,7 +593,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 60;
+var BUILD_NUM = 61;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1585,6 +1586,7 @@ function refreshSec(sec){
     var bn=document.getElementById('hbadge-notif');if(bn)bn.textContent='Notif: '+VR.length+(S.rows.length!==VR.length?' (de '+S.rows.length+')':'');
     renderDayBar();syncNotifSlotLabels();
     try{foldRezagados();}catch(e){}
+    try{actualizarBtnArchCompletos();}catch(e){}
     // Show/hide lock banner (no aplica a un día que ya tiene reportes archivados)
     var _vd=curDay();
     var allLoaded=!!(viewSlotLoaded('N1n')&&viewSlotLoaded('N2n')&&viewSlotLoaded('N3n'))||(_vd&&_vd!==NUEVO&&(diaTieneArchivo(_vd)||(diaHab(_vd)&&viewRows().length>0)));
@@ -3547,6 +3549,37 @@ function unirAHist(d,rows){
     sl.n=sl.recs.length;
   });
 }
+// Días activos 100% validados y con sus 3 reportes (o habilitados a mano), que nadie más está trabajando.
+function diasCompletosActivos(){
+  var S=SEC.notif;
+  return fechasDe(S.rows||[]).filter(function(d){
+    if(!dayDone(d)||lockedByOther(d))return false;
+    var rs=S.rows.filter(function(r){return fechaDiaR(r)===d;});
+    var tres=['N1n','N2n','N3n'].every(function(k){return rs.some(function(r){return r.slot===k;});});
+    return tres||diaHab(d);
+  });
+}
+function actualizarBtnArchCompletos(){
+  var b=document.getElementById('btn-arch-completos');if(!b)return;
+  var n=diasCompletosActivos().length;
+  b.style.display=n?'inline-flex':'none';
+  b.textContent='📦 Archivar días completos ('+n+')';
+}
+function btnArchivarCompletos(){
+  var ds=diasCompletosActivos(),S=SEC.notif;
+  if(!ds.length){toast('No hay días completos para archivar','warn');return;}
+  var tot=0;ds.forEach(function(d){tot+=S.rows.filter(function(r){return fechaDiaR(r)===d;}).length;});
+  if(!confirm('¿Archivar al histórico estos '+ds.length+' días 100% completos?\n\n'+ds.join(', ')+'\n\n'+tot+' registros. Siguen contando en Indicadores; salen de la pantalla de validación.'))return;
+  ds.forEach(function(d){
+    var rows=S.rows.filter(function(r){return fechaDiaR(r)===d;});
+    unirAHist(d,rows);
+    removeDayFromActive(S,d);releaseDay(d);
+    if(_viewDay===d)setViewDayVar(null);
+  });
+  lsSave();
+  refreshSec('notif');renderWF('notif');updateAvancePill();renderHist('notif');renderInd();
+  toast('📦 '+ds.length+' días archivados ('+tot+' registros).','ok');
+}
 function guardarDiaAuto(d){
   var S=SEC.notif,rows=(S.rows||[]).filter(function(r){return fechaDiaR(r)===d;});
   if(!rows.length)return;
@@ -4626,8 +4659,8 @@ function fbSaveSecRaw(sec,isReset,_retry){
     return o;
   }
   try{
-    var approxSize=JSON.stringify(sinArchivados(JSON.parse(JSON.stringify(basePayload)))).length;
-    if(approxSize>700000&&Date.now()-(window._sizeToastTs||0)>120000){
+    var approxSize=JSON.stringify(packSec(sinArchivados(JSON.parse(JSON.stringify(basePayload))))).length;
+    if(approxSize>800000&&Date.now()-(window._sizeToastTs||0)>120000){
       window._sizeToastTs=Date.now();
       var kb=function(o){return Math.round(JSON.stringify(o||{}).length/1024);};
       var det='activas '+kb(basePayload.rows)+' KB ('+(basePayload.rows||[]).length+' filas) · guardados '+kb(basePayload._avances)+' KB ('+(basePayload._avances||[]).length+' días) · historial '+kb(basePayload.hist)+' KB';
