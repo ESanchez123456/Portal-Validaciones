@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB62</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB63</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -339,6 +339,7 @@ tr:hover td{background:#f7faff}
     </div>
   <div class="toolbar" style="flex-wrap:wrap;gap:6px">
     <button class="btn bg" onclick="btnGuardarAvance()">💾 Guardar avance</button>
+    <button class="btn" id="btn-restaurar-dia" onclick="marcarDiaCompleto()" style="display:none;background:#fff;border:1px solid #c05621;color:#c05621" title="Solo supervisor: deja el día en pantalla al 100% (todas las casillas marcadas). Úsalo para restaurar un día que ya estaba validado">↺ Marcar día al 100%</button>
     <button class="btn" id="btn-arch-completos" onclick="btnArchivarCompletos()" style="display:none;background:#fff;border:1px solid #1BC5BD;color:#042433" title="Pasa al histórico los días que ya están al 100% (liberan espacio y siguen contando en Indicadores)">📦 Archivar días completos</button>
     <button class="btn bk" onclick="btnSyncNow()" id="btn-sync-now">🔄 Sincronizar</button>
     <button class="btn bk" onclick="btnLimpiar('notif')">✕ Limpiar filtros</button>
@@ -593,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 62;
+var BUILD_NUM = 63;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -3576,7 +3577,29 @@ function diasCompletosActivos(){
     return tres||diaHab(d);
   });
 }
+function marcarDiaCompleto(){
+  var d=curDay(),S=SEC.notif;
+  if(!/^edu\b/i.test(CURRENT_USER||'')){toast('Solo el supervisor puede usar esta opción','warn');return;}
+  if(!d||d===NUEVO){toast('Elige primero el día','warn');return;}
+  var lo=lockedByOther(d);if(lo){toast('🔒 '+fn1(lo.by)+' está trabajando el '+d+'.','warn');return;}
+  var rs=S.rows.filter(function(r){return fechaDiaR(r)===d;});
+  if(!rs.length)return;
+  if(!confirm('¿Marcar TODO el '+d+' como validado al 100%?\n\n'+rs.length+' registros: se marcarán las casillas de Edu/Claudia y de Jose, Jemima y Nestor.\n\nÚsalo solo para restaurar un día que ya estaba validado. No restaura tipificaciones de omisiones: esas deben ser revisadas aparte.'))return;
+  claimDay(d);
+  var rv={'Jose Gutierrez':'jose_ok','Jemima Gonzales':'jemima_ok','Nestor Rossell':'nestor_ok'};
+  rs.forEach(function(r){
+    var ch=['val_ok','est','frev'];
+    r.val_ok=true;r.est='Revisado';if(!r.frev)r.frev=todayStr();
+    var f=rv[r.val50];if(f){r[f]=true;ch.push(f);}
+    touchFields(r,ch);
+  });
+  lsSave();
+  refreshSec('notif');renderWF('notif');updateAvancePill();renderInd();
+  toast('✅ '+d+' marcado al 100% ('+rs.length+' registros).','ok');
+}
 function actualizarBtnArchCompletos(){
+  var rb=document.getElementById('btn-restaurar-dia');
+  if(rb){var _d=curDay();rb.style.display=(/^edu\b/i.test(CURRENT_USER||'')&&_d&&_d!==NUEVO&&!dayDone(_d))?'inline-flex':'none';}
   var b=document.getElementById('btn-arch-completos');if(!b)return;
   var n=diasCompletosActivos().length;
   b.style.display=n?'inline-flex':'none';
