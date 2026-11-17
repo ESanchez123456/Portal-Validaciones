@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-04-FB61</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB62</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -593,7 +593,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 61;
+var BUILD_NUM = 62;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -733,6 +733,7 @@ function rowHash(s){
   for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;
   return h.toString(36);
 }
+function _kNorm(k){return String(k||'').split('~')[0].replace(/\|\d{1,2}\/\d{1,2}\/\d{4}$/,'');}
 function uniqRowKeys(rows){
   if(!rows||rows.length<2)return rows;
   var cnt={};
@@ -830,6 +831,7 @@ function processFile(file,tipo,slotId,sec){
       else if(sec==='sup')nuevos=normSup(data,slotId);
       else nuevos=tipo==='T'?normT(data,slotId):normN(data,slotId);
       uniqRowKeys(nuevos);
+      var _prev={};
       if(sec==='notif'){
         // Solo se reemplaza lo MISMO slot + MISMOS días del archivo; los demás días no se tocan.
         var _nd={};nuevos.forEach(function(r){_nd[fechaDiaR(r)]=1;});
@@ -837,8 +839,23 @@ function processFile(file,tipo,slotId,sec){
         Object.keys(_nd).forEach(function(dd){var o=lockedByOther(dd);if(o&&S.rows.some(function(r){return r.slot===slotId&&fechaDiaR(r)===dd;}))_blk={d:dd,o:o};});
         if(_blk){toast('🔒 No se cargó: '+fn1(_blk.o.by)+' está trabajando el '+_blk.d+' y ese reporte ya existe. Pídele que lo libere o usa "Tomar el día".','warn');return;}
         Object.keys(_nd).forEach(function(dd){claimDay(dd);});
+        // Si el reporte de ese día ya estaba cargado y validado, al recargarlo se CONSERVAN las validaciones
+        // (casillas, tipificación, etc.) de las filas que coinciden por slot+proceso+expediente+día.
+        _prev={};
+        S.rows.forEach(function(r){if(r.slot===slotId&&_nd[fechaDiaR(r)]){var kk=_kNorm(r.key);(_prev[kk]=_prev[kk]||[]).push(r);}});
         S.rows=S.rows.filter(function(r){return !(r.slot===slotId&&_nd[fechaDiaR(r)]);});
       }else S.rows=S.rows.filter(function(r){return r.slot!==slotId;});
+      var _kept=0;
+      if(sec==='notif'){
+        nuevos.forEach(function(r){
+          var lst=_prev[_kNorm(r.key)];if(!lst||!lst.length)return;
+          var o=lst.shift();
+          EDIT_FIELDS_G.forEach(function(f){if(o[f]!==undefined)r[f]=o[f];});
+          if(o._fieldTs)r._fieldTs=JSON.parse(JSON.stringify(o._fieldTs));
+          if(o._rowTs)r._rowTs=o._rowTs;
+          _kept++;
+        });
+      }
       var ex={},ag=0,dup=0;
       S.rows.forEach(function(r){ex[r.key]=1;});
       // La clave es slot|id|exp (sin fecha): un proceso que se vuelve a notificar otro día chocaba con la
@@ -878,7 +895,7 @@ function processFile(file,tipo,slotId,sec){
         if(_nds.length>1)_sepMsg=' · el archivo trae '+_nds.length+' fechas ('+_nds.join(', ')+'); cambia de día con los botones 📅';
       }
       refreshSec(sec);renderWF(sec);
-      toast('✅ '+ag+' cargados'+(_otros?' (incluye '+_otros+' procesos que ya tenían notificación en otro día)':'')+_sepMsg);
+      toast('✅ '+ag+' cargados'+(_kept?' · se conservaron las validaciones de '+_kept:'')+(_otros?' (incluye '+_otros+' procesos que ya tenían notificación en otro día)':'')+_sepMsg);
     }catch(err){toast('Error: '+err.message,'err');}
   };
   rd.readAsArrayBuffer(file);
@@ -4633,8 +4650,40 @@ function fbSaveSec(sec,isReset){
   },function(){_fbInflight[sec]=null;});
   _fbInflight[sec]=p;return p;
 }
+// Válvula de espacio: el documento sec_notif admite 1 MB. Si las filas activas se acercan al límite, los días
+// MÁS ANTIGUOS (que nadie está trabajando) pasan solos a documentos aparte: completos → histórico,
+// incompletos → Avances guardados (retomables). No se pierde ninguna casilla.
+function rowsBytes(){try{return JSON.stringify((SEC.notif.rows||[]).map(packRow)).length;}catch(e){return 0;}}
+function liberarEspacio(){
+  var S=SEC&&SEC.notif;if(!S||!S.rows)return;
+  if(rowsBytes()<880000)return;
+  var mine=curDay(),movidos=[];
+  var dias=fechasDe(S.rows);
+  for(var i=0;i<dias.length&&rowsBytes()>720000;i++){
+    var d=dias[i];
+    if(d===mine||lockedByOther(d))continue;
+    var rs=S.rows.filter(function(r){return fechaDiaR(r)===d;});
+    if(!rs.length)continue;
+    if(dayDone(d)){unirAHist(d,rs);}
+    else{
+      var sl={},sd={};(S.slots||[]).forEach(function(k){sl[k]=rs.some(function(r){return r.slot===k;});sd[k]=[];});
+      var hora=new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+      var av=mkAvDia({ts:Date.now(),fecha:todayStr(),hora:hora,slotLoaded:sl,slotData:sd},d,JSON.parse(JSON.stringify(rs)));
+      S._avances=S._avances||[];
+      var ix=-1;S._avances.forEach(function(x,j){if(x&&(x.id===av.id||(x.fechaNotif||x.fecha)===d))ix=j;});
+      if(ix>=0)S._avances[ix]=mergeAvPair(S._avances[ix],av);else S._avances.push(av);
+    }
+    removeDayFromActive(S,d);releaseDay(d);
+    movidos.push(d);
+  }
+  if(movidos.length){
+    try{refreshSec('notif');renderWF('notif');updateAvancePill();renderHist('notif');}catch(e){}
+    toast('📦 Para no llenar la base se archivaron solos los días más antiguos: '+movidos.join(', ')+'. Los incompletos están en «Avances guardados» (Retomar); las casillas no se pierden.','warn');
+  }
+}
 function fbSaveSecRaw(sec,isReset,_retry){
   if(!FB_ENABLED||!fbDb)return Promise.resolve();
+  if(sec==='notif'){try{liberarEspacio();}catch(e){console.warn('liberarEspacio',e);}}
   var ref=fbSecRef(sec);
   var basePayload;
   try{basePayload=JSON.parse(JSON.stringify(SEC[sec]));}catch(e){return Promise.resolve();}
