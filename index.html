@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB63</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB64</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -594,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 63;
+var BUILD_NUM = 64;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2648,7 +2648,8 @@ function renderInd(){
           ?d.date+'<span style="background:#C9F7F5;color:#1BC5BD;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:5px">100% ✓</span>'
           :d.date);
       notifH+='<tr style="background:'+bg+'">'+
-        '<td style="padding:6px 10px;font-weight:600;color:#000">'+fechaLabel+'</td>'+
+        '<td style="padding:6px 10px;font-weight:600;color:#000">'+fechaLabel+
+          ((/^edu\b/i.test(CURRENT_USER||'')&&!allDone)?' <button onclick="marcarFechaCompleta(\''+d.date+'\')" title="Solo supervisor: marca todo este día al 100% (donde esté: en curso, guardado o histórico)" style="background:#fff;color:#c05621;border:1px solid #c05621;padding:1px 7px;border-radius:8px;font-size:9px;font-weight:600;cursor:pointer;font-family:inherit">↺ 100%</button>':'')+'</td>'+
         '<td style="padding:6px 10px;text-align:center;font-weight:600">'+d.total+(peakDay&&d.date===peakDay.date&&d.status==='cerrada'?' 🔥':'')+' </td>'+
         growthCell+
         '<td style="padding:6px 10px;text-align:center;color:#553c9a">'+( d.slot.N1n||'—')+'</td>'+
@@ -3577,6 +3578,33 @@ function diasCompletosActivos(){
     return tres||diaHab(d);
   });
 }
+// Marca al 100% TODAS las filas de una fecha, estén donde estén: en curso, avances guardados o histórico.
+function marcarFilasCompletas(rs){
+  var rv={'Jose Gutierrez':'jose_ok','Jemima Gonzales':'jemima_ok','Nestor Rossell':'nestor_ok'};
+  rs.forEach(function(r){
+    var ch=['val_ok','est','frev'];
+    r.val_ok=true;r.est='Revisado';if(!r.frev)r.frev=todayStr();
+    var f=rv[r.val50];if(f){r[f]=true;ch.push(f);}
+    touchFields(r,ch);
+  });
+}
+function marcarFechaCompleta(d){
+  var S=SEC.notif;
+  if(!/^edu\b/i.test(CURRENT_USER||'')){toast('Solo el supervisor puede usar esta opción','warn');return;}
+  var lo=lockedByOther(d);if(lo){toast('🔒 '+fn1(lo.by)+' está trabajando el '+d+'.','warn');return;}
+  var rs=[],n={act:0,av:0,hist:0};
+  (S.rows||[]).forEach(function(r){if(fechaDiaR(r)===d){rs.push(r);n.act++;}});
+  (S._avances||[]).forEach(function(a){((a&&a.rows)||[]).forEach(function(r){if(fechaDiaR(r)===d){rs.push(r);n.av++;}});});
+  Object.keys(S.hist||{}).forEach(function(h){var sl=(S.hist[h]&&S.hist[h].slots)||{};Object.keys(sl).forEach(function(k){(sl[k].recs||[]).forEach(function(r){if(fechaDiaR(r)===d){rs.push(r);n.hist++;}});});});
+  if(!rs.length){toast('No encontré registros del '+d,'warn');return;}
+  if(!confirm('¿Marcar TODO el '+d+' como validado al 100%?\n\n'+rs.length+' registros ('+n.act+' en curso, '+n.av+' en avances guardados, '+n.hist+' en histórico).\n\nSolo restaura casillas; no restaura tipificaciones de omisiones.'))return;
+  marcarFilasCompletas(rs);
+  (S._avances||[]).forEach(function(a){if(a&&a.rows&&(a.fechaNotif||a.fecha)===d){var v=a.rows.filter(function(r){return r.val_ok;}).length;a.valOk=v;a.pct=a.rows.length?Math.round(v/a.rows.length*100):0;}});
+  lsSave();
+  try{refreshSec('notif');renderWF('notif');updateAvancePill();renderHist('notif');}catch(e){}
+  renderInd();
+  toast('✅ '+d+' marcado al 100% ('+rs.length+' registros).','ok');
+}
 function marcarDiaCompleto(){
   var d=curDay(),S=SEC.notif;
   if(!/^edu\b/i.test(CURRENT_USER||'')){toast('Solo el supervisor puede usar esta opción','warn');return;}
@@ -3586,13 +3614,7 @@ function marcarDiaCompleto(){
   if(!rs.length)return;
   if(!confirm('¿Marcar TODO el '+d+' como validado al 100%?\n\n'+rs.length+' registros: se marcarán las casillas de Edu/Claudia y de Jose, Jemima y Nestor.\n\nÚsalo solo para restaurar un día que ya estaba validado. No restaura tipificaciones de omisiones: esas deben ser revisadas aparte.'))return;
   claimDay(d);
-  var rv={'Jose Gutierrez':'jose_ok','Jemima Gonzales':'jemima_ok','Nestor Rossell':'nestor_ok'};
-  rs.forEach(function(r){
-    var ch=['val_ok','est','frev'];
-    r.val_ok=true;r.est='Revisado';if(!r.frev)r.frev=todayStr();
-    var f=rv[r.val50];if(f){r[f]=true;ch.push(f);}
-    touchFields(r,ch);
-  });
+  marcarFilasCompletas(rs);
   lsSave();
   refreshSec('notif');renderWF('notif');updateAvancePill();renderInd();
   toast('✅ '+d+' marcado al 100% ('+rs.length+' registros).','ok');
