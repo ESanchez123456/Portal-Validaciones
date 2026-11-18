@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-17-FB64</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-18-FB65</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -594,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 64;
+var BUILD_NUM = 65;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -747,6 +747,35 @@ function uniqRowKeys(rows){
     r.key=nk;
   });
   return rows;
+}
+// Normaliza fechas de notificación a DD/MM/AAAA (+ hora si la trae): acepta 05-11-26, 5/11/2026, 05.11.26, 2026-11-05.
+function normFechaStr(v){
+  v=String(v||'').trim();
+  var m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})(?!\d)(.*)$/.exec(v);
+  if(m){var y=m[3].length===2?'20'+m[3]:m[3];return pad(+m[1])+'/'+pad(+m[2])+'/'+y+m[4];}
+  m=/^(\d{4})-(\d{2})-(\d{2})(?!\d)(.*)$/.exec(v);
+  if(m)return m[3]+'/'+m[2]+'/'+m[1]+m[4];
+  return v;
+}
+// Corrige filas ya cargadas con otro formato de fecha (p. ej. «05-11-26» pasa a 05/11/2026).
+function migrarFechas(){
+  var S=SEC&&SEC.notif;if(!S)return false;
+  var ch=0,t=Date.now();
+  function fix(r){
+    if(!r||!r.fc2)return;
+    var n=normFechaStr(r.fc2);
+    if(n!==r.fc2&&/^\d{2}\/\d{2}\/\d{4}/.test(n)){
+      var viejo=String(r.fc2).substring(0,10);
+      r.fc2=n;
+      if(r.fuenteLbl&&r.fuenteLbl.indexOf(viejo)>=0)r.fuenteLbl=r.fuenteLbl.replace(viejo,n.substring(0,10));
+      r._rowTs=t;ch++;
+    }
+  }
+  (S.rows||[]).forEach(fix);
+  (S._avances||[]).forEach(function(a){if(!a)return;(a.rows||[]).forEach(fix);
+    var f=a.fechaNotif&&normFechaStr(a.fechaNotif);if(f&&f!==a.fechaNotif&&/^\d{2}\/\d{2}\/\d{4}$/.test(f)){a.fechaNotif=f;ch++;}});
+  Object.keys(S.hist||{}).forEach(function(h){var sl=(S.hist[h]&&S.hist[h].slots)||{};Object.keys(sl).forEach(function(k){(sl[k].recs||[]).forEach(fix);});});
+  return ch>0;
 }
 function fechaDiaR(r){return String((r&&r.fc2)||'').substring(0,10)||'Sin fecha';}
 function fechaSortKey(d){var m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(d||'');return m?Number(m[3]+m[2]+m[1]):99999999;}
@@ -1216,7 +1245,7 @@ function normNnotif(data,slotId){
     var o=baseR('notif');
     o.src='Notificaciones';o.slot=slotId;
     // Fecha from Excel field
-    var fechaNotif=String(gf(r,'FECHA DE NOTIFICACION','fecha de notificacion','FECHA','fecha','Fecha')||'');
+    var fechaNotif=normFechaStr(gf(r,'FECHA DE NOTIFICACION','fecha de notificacion','FECHA','fecha','Fecha')||'');
     o.fc2=fechaNotif||now();
     // La clave lleva el DÍA: sin él, un proceso re-notificado chocaba con filas ya archivadas (hist/avances)
     // y fbApplyIncoming lo quitaba creyendo que otro usuario lo había archivado.
@@ -1603,6 +1632,7 @@ function refreshSec(sec){
     var VR=viewRows();
     var bn=document.getElementById('hbadge-notif');if(bn)bn.textContent='Notif: '+VR.length+(S.rows.length!==VR.length?' (de '+S.rows.length+')':'');
     renderDayBar();syncNotifSlotLabels();
+    try{if(migrarFechas())lsSave();}catch(e){}
     try{foldRezagados();}catch(e){}
     try{actualizarBtnArchCompletos();}catch(e){}
     // Show/hide lock banner (no aplica a un día que ya tiene reportes archivados)
