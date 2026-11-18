@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-18-FB65</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-18-FB66</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -594,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 65;
+var BUILD_NUM = 66;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -2636,7 +2636,8 @@ function renderInd(){
       var pctJemima=d.jemimaT?Math.round(d.jemimaOk/d.jemimaT*100):0;
       var pctNestor=d.nestorT?Math.round(d.nestorOk/d.nestorT*100):0;
       var pctJose=d.joseT?Math.round(d.joseOk/d.joseT*100):0;
-      var allDone=pctVal===100&&pctJemima===100&&pctNestor===100&&pctJose===100;
+      // Un revisor sin filas ese día (—) no bloquea: el día cuenta como completo si todos los que tenían filas están al 100%.
+      var allDone=pctVal===100&&(!d.jemimaT||pctJemima===100)&&(!d.nestorT||pctNestor===100)&&(!d.joseT||pctJose===100);
       // Growth vs previous day
       var _ai=daysAll.indexOf(d);var prevDay=_ai<daysAll.length-1?daysAll[_ai+1]:null;
       var growthCell='<td style="padding:6px 8px;text-align:center">—</td>';
