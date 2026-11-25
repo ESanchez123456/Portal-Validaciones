@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-25-FB68</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-25-FB69</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -594,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 68;
+var BUILD_NUM = 69;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1857,16 +1857,44 @@ function sortedFechas(sec){
   });
 }
 
+var _histOrd='cierre',_histFil='';
+function histFechasNotif(j){
+  var o={};Object.keys((j&&j.slots)||{}).forEach(function(k){((j.slots[k]&&j.slots[k].recs)||[]).forEach(function(r){var d=fechaDiaR(r);if(d)o[d]=1;});});
+  return Object.keys(o).sort(function(a,b){return fechaSortKey(a)-fechaSortKey(b);});
+}
+function histSetOrd(v){_histOrd=v;renderHist('notif');}
+function histSetFil(v){_histFil=v;renderHist('notif');}
 function renderHist(sec){
   if(sec==='all'){renderHist('syp');renderHist('notif');renderHist('sup');return;}
   if(sec){
     // Render single section
-    var fechas=sortedFechas(sec);
+    var fechas=sortedFechas(sec),total=fechas.length,bar='';
+    if(sec==='notif'){
+      var H=SEC.notif.hist||{},info={},all={};
+      fechas.forEach(function(f){var l=histFechasNotif(H[f]);info[f]=l;l.forEach(function(d){all[d]=1;});});
+      var opts=Object.keys(all).sort(function(a,b){return fechaSortKey(b)-fechaSortKey(a);});
+      if(_histFil&&!all[_histFil])_histFil='';
+      if(_histFil)fechas=fechas.filter(function(f){return info[f].indexOf(_histFil)>=0;});
+      if(_histOrd!=='cierre'){
+        var mx=function(f){var l=info[f];return l.length?fechaSortKey(l[l.length-1]):0;};
+        var mn=function(f){var l=info[f];return l.length?fechaSortKey(l[0]):99999999;};
+        fechas.sort(function(a,b){return _histOrd==='desc'?(mx(b)-mx(a)):(mn(a)-mn(b));});
+      }
+      var st='padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:11.5px;font-family:inherit;background:var(--surface);color:var(--navy)';
+      bar='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:11.5px;color:var(--muted)">'+
+        '<label>🔔 Fecha de notificación: <select onchange="histSetFil(this.value)" style="'+st+'"><option value="">Todas</option>'+
+          opts.map(function(d){return'<option value="'+d+'"'+(d===_histFil?' selected':'')+'>'+d+'</option>';}).join('')+'</select></label>'+
+        '<label>Ordenar: <select onchange="histSetOrd(this.value)" style="'+st+'">'+
+          [['cierre','Fecha de cierre (más reciente)'],['desc','Fecha de notificación: mayor a menor'],['asc','Fecha de notificación: menor a mayor']].map(function(o){return'<option value="'+o[0]+'"'+(o[0]===_histOrd?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></label>'+
+        (_histFil?'<button class="btn" onclick="histSetFil(\'\')" style="font-size:11px;padding:4px 10px">✕ Quitar filtro</button>':'')+
+        '</div>';
+    }
     var cntEl=document.getElementById('hist-count-'+sec);
-    if(cntEl)cntEl.textContent=fechas.length+' jornada'+(fechas.length!==1?'s':'');
+    if(cntEl)cntEl.textContent=(fechas.length!==total?fechas.length+' de '+total:total)+' jornada'+(fechas.length!==1?'s':'');
     var b=document.getElementById('hbody-'+sec);if(!b)return;
-    if(!fechas.length){b.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted);font-size:12.5px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No hay jornadas archivadas.</div>';return;}
-    var h='';fechas.forEach(function(f,fi){h+=buildFechaCarpeta(f,SEC[sec].hist[f],fi,sec);});
+    if(!total){b.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted);font-size:12.5px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No hay jornadas archivadas.</div>';return;}
+    var h=bar;if(!fechas.length)h+='<div style="padding:20px;color:var(--muted);font-size:12px">Ninguna jornada contiene esa fecha.</div>';
+    fechas.forEach(function(f,fi){h+=buildFechaCarpeta(f,SEC[sec].hist[f],fi,sec);});
     b.innerHTML=h;
   } else {
     renderHist('syp');renderHist('notif');renderHist('sup');
