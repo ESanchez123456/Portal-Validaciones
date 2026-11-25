@@ -189,7 +189,7 @@ tr:hover td{background:#f7faff}
   <span class="tb-brand">Tracker CID</span>
   <span class="tb-sep">›</span>
   <span class="tb-sub">Vinatea &amp; Toyama · CID</span>
-  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-18-FB66</span>
+  <span style="font-size:9.5px;color:#8a96a3;background:#f0f4f8;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.02em" title="Identificador de esta compilación — úsalo para confirmar qué versión tienes abierta">BUILD 2026-11-25-FB67</span>
   <div class="tb-nav">
     <button class="tbn on" onclick="goTab('syp')">Sent. y Pagos</button>
     <button class="tbn"    onclick="goTab('notif')">Notificaciones</button>
@@ -594,7 +594,7 @@ var FB_ENABLED = firebaseConfig.apiKey.indexOf('PEGAR_')!==0;
 // Número de versión de esta compilación (sube con cada BUILD). Se escribe en cada
 // guardado para detectar a quien sigue usando una versión vieja, que es la que
 // borra checks de otros (la fusión de cambios corre en el navegador de quien guarda).
-var BUILD_NUM = 66;
+var BUILD_NUM = 67;
 var _outdated = false;
 var _warnedOld = {};
 function showOutdated(){
@@ -1914,10 +1914,14 @@ function buildFechaCarpeta(fecha,jorn,fi,sec){sec=sec||'syp';
   var allRecs=[];
   ['E','N1','N2','N3'].forEach(function(s){if(jorn.slots[s])allRecs=allRecs.concat(jorn.slots[s].recs);});
 
+  // Fechas de notificación que contiene esta jornada (el título es la fecha de CIERRE, no la de las notificaciones)
+  var _nf={};allRecs.forEach(function(r){var d=(sec==='notif')?fechaDiaR(r):'';if(d)_nf[d]=(_nf[d]||0)+1;});
+  var _nfk=Object.keys(_nf).sort(function(a,b){return fechaSortKey(a)-fechaSortKey(b);});
+  var _nfChip=_nfk.length?'<span title="Fechas de notificación incluidas en esta jornada" style="background:#fff;color:#1a202c;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;margin-left:8px;white-space:nowrap">🔔 Notif. '+_nfk.map(function(d){return d.slice(0,5);}).join(' · ')+'</span>':'';
   return'<div class="hist-fecha">'+
     '<div class="hf-header" onclick="togHF(\'hf-'+sec+'-'+fi+'\')">'+
     '<span style="font-size:16px">📁</span>'+
-    '<div class="hf-title">'+fecha+(jorn.hora?' · '+jorn.hora:'')+'</div>'+
+    '<div class="hf-title">'+fecha+(jorn.hora?' · '+jorn.hora:'')+'</div>'+_nfChip+
     statusBadge+
     '<div style="display:flex;gap:5px;margin-left:10px">'+slotTotals+'</div>'+
     '<span style="background:rgba(255,255,255,.15);padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;margin-left:8px">'+totalRecs+' total</span>'+
